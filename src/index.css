@@ -1,0 +1,64 @@
+:root {
+  color-scheme: dark;
+  --bg: #050505;
+  --panel: #0c0c0c;
+  --line: #1c1c1c;
+  --text: #e8e8e8;
+  --muted: #7a7a7a;
+  --dim: #3a3a3a;
+  --accent: #d4d4d4;
+  --cursor: #f0f0f0;
+  --claude: #c4c4c4;
+  --codex: #9a9a9a;
+  --ok: #bdbdbd;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  line-height: 1.45;
+  font-weight: 400;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+}
+
+body {
+  min-height: 100vh;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--line);
+  cursor: pointer;
+  padding: 0.45rem 0.8rem;
+}
+
+button:hover {
+  border-color: var(--muted);
+}
+
+h1,
+h2,
+h3 {
+  font-family: Syne, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+a {
+  color: var(--text);
+}
