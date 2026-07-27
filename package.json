@@ -2,7 +2,30 @@
   "name": "agent-dashboard",
   "private": true,
   "version": "0.1.0",
+  "description": "Local macOS Agent Deck: AI agent usage, Mac metrics, and GitHub contributions",
+  "license": "MIT",
+  "author": "ctt062",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ctt062/agent-dashboard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ctt062/agent-dashboard/issues"
+  },
+  "homepage": "https://github.com/ctt062/agent-dashboard#readme",
+  "keywords": [
+    "dashboard",
+    "cursor",
+    "claude-code",
+    "codex",
+    "macos",
+    "localhost",
+    "github-contributions"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "concurrently -k -n api,web -c gray.bold,white.bold \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "tsx watch server/index.ts",

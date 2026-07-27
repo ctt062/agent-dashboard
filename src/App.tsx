@@ -35,7 +35,7 @@ export default function App() {
     <div className="shell">
       <header className="top">
         <div>
-          <p className="eyebrow">Local · private</p>
+          <p className="eyebrow">Localhost only</p>
           <h1>Agent Deck</h1>
         </div>
         <div className="top-right">
