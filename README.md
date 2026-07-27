@@ -1,5 +1,7 @@
 # Agent Deck
 
+![Agent Deck screenshot](./src/assets/Screenshot.png)
+
 Local macOS dashboard for AI agent usage (Cursor, Claude Code, Codex), Mac resource meters, and your GitHub contribution calendar.
 
 Runs entirely on your machine. Nothing is uploaded.
