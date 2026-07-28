@@ -100,11 +100,13 @@ async function buildPayload(
 ): Promise<DashboardPayload> {
   const range = parseRange(typeof rangeRaw === 'string' ? rangeRaw : undefined)
   const { data, cached } = await collectRaw(force)
+  // Dashboard "this billing cycle" follows Cursor's plan cycle when known,
+  // so Claude's rolling weekly window does not pull the shared range back.
+  const sharedCycleStart = data.cursor.usageReset?.cycleStart ?? null
   const agents = withShares(
     [data.cursor, data.claude, data.codex].map((a) => {
-      const cycleStart = a.usageReset?.cycleStart
-      const since = rangeStartDate(range, new Date(), cycleStart)
-      const days = daysInRange(range, new Date(), cycleStart)
+      const since = rangeStartDate(range, new Date(), sharedCycleStart)
+      const days = daysInRange(range, new Date(), sharedCycleStart)
       return applyRange(a, range, since, days)
     }),
   )
