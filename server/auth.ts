@@ -129,13 +129,8 @@ function pinMatches(input: string): boolean {
   return timingSafeEqual(a, b)
 }
 
-function clientIp(req: Request): string {
-  const forwarded = req.get('x-forwarded-for')
-  if (forwarded) {
-    const first = forwarded.split(',')[0]?.trim()
-    if (first) return first
-  }
-  return req.ip || req.socket.remoteAddress || 'unknown'
+function pinRateLimitKey(req: Request): string {
+  return req.socket.remoteAddress || 'unknown'
 }
 
 export function attachCors(app: Express): void {
@@ -346,8 +341,8 @@ export function mountAuthRoutes(app: Express): void {
       return
     }
 
-    const ip = clientIp(req)
-    const limited = checkPinRateLimit(pinAttemptStore, ip)
+    const rateKey = pinRateLimitKey(req)
+    const limited = checkPinRateLimit(pinAttemptStore, rateKey)
     if (!limited.ok) {
       const retryAfterSec = Math.max(1, Math.ceil(limited.retryAfterMs / 1000))
       res.setHeader('Retry-After', String(retryAfterSec))
@@ -361,7 +356,7 @@ export function mountAuthRoutes(app: Express): void {
 
     const pin = typeof req.body?.pin === 'string' ? req.body.pin : ''
     if (!pinMatches(pin)) {
-      const result = recordPinFailure(pinAttemptStore, ip)
+      const result = recordPinFailure(pinAttemptStore, rateKey)
       if (result.retryAfterMs > 0) {
         const retryAfterSec = Math.max(1, Math.ceil(result.retryAfterMs / 1000))
         res.setHeader('Retry-After', String(retryAfterSec))
@@ -376,7 +371,7 @@ export function mountAuthRoutes(app: Express): void {
       return
     }
 
-    clearPinFailures(pinAttemptStore, ip)
+    clearPinFailures(pinAttemptStore, rateKey)
     const user: AuthUser = {
       email: 'pin@local',
       name: 'PIN access',
