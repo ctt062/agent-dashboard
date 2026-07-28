@@ -30,21 +30,30 @@
     "dev": "concurrently -k -n api,web -c gray.bold,white.bold \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "tsx watch server/index.ts",
     "dev:web": "vite",
+    "dev:lan": "concurrently -k -n api,web -c gray.bold,white.bold \"HOST=0.0.0.0 npm run dev:api\" \"VITE_HOST=0.0.0.0 npm run dev:web\"",
     "build": "tsc -b && vite build",
     "start": "tsx server/index.ts",
+    "serve": "npm run build && npm start",
+    "serve:lan": "npm run build && HOST=0.0.0.0 npm start",
     "preview": "vite preview",
-    "lint": "oxlint"
+    "lint": "oxlint",
+    "test": "node --test server/lib/range.test.ts server/lib/lan-intent.test.ts server/lib/auth-mode.test.ts server/lib/bearer-token.test.ts server/lib/pin-rate-limit.test.ts src/lib/types.test.ts",
+    "setup": "npm run build && npm run launchagent:install",
+    "launchagent:install": "bash scripts/install-launchagent.sh",
+    "launchagent:uninstall": "bash scripts/uninstall-launchagent.sh"
   },
   "dependencies": {
     "concurrently": "^10.0.4",
-    "cors": "^2.8.6",
+    "cookie-session": "^2.1.1",
+    "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "google-auth-library": "^10.9.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "recharts": "^3.10.1"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.19",
+    "@types/cookie-session": "^2.0.49",
     "@types/express": "^5.0.6",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.17",

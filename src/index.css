@@ -35,6 +35,8 @@ body,
 
 body {
   min-height: 100vh;
+  min-height: 100dvh;
+  -webkit-tap-highlight-color: transparent;
 }
 
 button {
@@ -44,6 +46,8 @@ button {
   border: 1px solid var(--line);
   cursor: pointer;
   padding: 0.45rem 0.8rem;
+  min-height: 2.5rem;
+  touch-action: manipulation;
 }
 
 button:hover {
