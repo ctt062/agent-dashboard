@@ -1,18 +1,45 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AgentPanel } from './components/AgentPanel'
 import { GithubPanel } from './components/GithubPanel'
+import { Login } from './components/Login'
 import { SystemPanel } from './components/SystemPanel'
 import type { DashboardPayload, DateRange } from './lib/types'
 
 const REFRESH_MS = 15_000
 
+type AuthUser = {
+  email: string
+  name: string | null
+  picture: string | null
+}
+
 export default function App() {
+  const [authChecked, setAuthChecked] = useState(false)
+  const [user, setUser] = useState<AuthUser | null>(null)
   const [range, setRange] = useState<DateRange>('7d')
   const [data, setData] = useState<DashboardPayload | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const abortRef = useRef<AbortController | null>(null)
   const inFlightRef = useRef(false)
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch('/api/auth/me')
+        if (res.ok) {
+          const json = (await res.json()) as { user: AuthUser }
+          setUser(json.user)
+        } else {
+          setUser(null)
+        }
+      } catch {
+        setUser(null)
+      } finally {
+        setAuthChecked(true)
+      }
+    })()
+  }, [])
 
   const load = useCallback(
     async (opts?: { refresh?: boolean; mode?: 'replace' | 'poll' }) => {
@@ -33,6 +60,15 @@ export default function App() {
         const res = await fetch(`/api/dashboard?${params}`, {
           signal: controller.signal,
         })
+        if (res.status === 401 || res.status === 503) {
+          setUser(null)
+          setData(null)
+          throw new Error(
+            res.status === 503
+              ? 'Google sign-in is not configured on this Mac.'
+              : 'Signed out',
+          )
+        }
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const json = (await res.json()) as DashboardPayload
         if (controller.signal.aborted) return
@@ -50,6 +86,7 @@ export default function App() {
   )
 
   useEffect(() => {
+    if (!user) return
     setLoading(true)
     void load({ mode: 'replace' })
     const id = window.setInterval(() => void load({ mode: 'poll' }), REFRESH_MS)
@@ -57,7 +94,29 @@ export default function App() {
       window.clearInterval(id)
       abortRef.current?.abort()
     }
-  }, [load])
+  }, [load, user])
+
+  async function logout() {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' })
+    } catch {
+      /* ignore */
+    }
+    setUser(null)
+    setData(null)
+  }
+
+  if (!authChecked) {
+    return (
+      <div className="shell">
+        <p className="banner">Checking Google sign-in…</p>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return <Login onSignedIn={setUser} />
+  }
 
   return (
     <div className="shell">
@@ -68,28 +127,34 @@ export default function App() {
         </div>
         <div className="top-right">
           <p className="stamp">
+            {user.email}
             {data
-              ? `Updated ${new Date(data.generatedAt).toLocaleTimeString()}${
+              ? ` · Updated ${new Date(data.generatedAt).toLocaleTimeString()}${
                   data.cached ? ' · cached' : ''
                 }`
               : loading
-                ? 'Loading…'
-                : 'Offline'}
+                ? ' · Loading…'
+                : ' · Offline'}
           </p>
-          <button type="button" onClick={() => void load({ refresh: true })}>
-            Refresh
-          </button>
+          <div className="top-actions">
+            <button type="button" onClick={() => void load({ refresh: true })}>
+              Refresh
+            </button>
+            <button type="button" onClick={() => void logout()}>
+              Sign out
+            </button>
+          </div>
         </div>
       </header>
 
       {error ? (
         <p className="banner">
-          API unreachable ({error}). Start with{' '}
-          <code>npm run dev</code> or <code>npm run serve</code>.
+          API unreachable ({error}). If Agent Deck is not running, use{' '}
+          <code>npm run setup</code> once so it starts automatically at login.
         </p>
       ) : null}
 
-      {data ? (
+      {data && data.range === range ? (
         <main className="stack">
           <AgentPanel
             agents={data.agents}
@@ -146,9 +211,16 @@ export default function App() {
           align-items: end;
           gap: 0.45rem;
         }
+        .top-actions { display: flex; gap: 0.4rem; }
         @media (max-width: 600px) {
           .top { align-items: start; }
-          .top-right { width: 100%; flex-direction: row; justify-content: space-between; align-items: center; text-align: left; }
+          .top-right {
+            width: 100%;
+            flex-direction: column;
+            align-items: stretch;
+            text-align: left;
+          }
+          .top-actions { justify-content: flex-start; }
         }
         .eyebrow {
           margin: 0 0 0.35rem;

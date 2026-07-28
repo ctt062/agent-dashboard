@@ -38,17 +38,22 @@
     "preview": "vite preview",
     "lint": "oxlint",
     "test": "node --test server/lib/range.test.ts server/lib/lan-intent.test.ts src/lib/types.test.ts",
+    "setup": "npm run build && npm run launchagent:install",
     "launchagent:install": "bash scripts/install-launchagent.sh",
     "launchagent:uninstall": "bash scripts/uninstall-launchagent.sh"
   },
   "dependencies": {
     "concurrently": "^10.0.4",
+    "cookie-session": "^2.1.1",
+    "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "google-auth-library": "^10.9.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "recharts": "^3.10.1"
   },
   "devDependencies": {
+    "@types/cookie-session": "^2.0.49",
     "@types/express": "^5.0.6",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.17",

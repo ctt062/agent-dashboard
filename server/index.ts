@@ -1,8 +1,15 @@
+import 'dotenv/config'
 import express from 'express'
 import { existsSync } from 'node:fs'
 import { networkInterfaces } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  attachSession,
+  authConfigured,
+  mountAuthRoutes,
+  requireAuth,
+} from './auth.js'
 import { collectClaude } from './collectors/claude.js'
 import { collectCodex } from './collectors/codex.js'
 import { collectCursor } from './collectors/cursor.js'
@@ -116,18 +123,22 @@ async function buildPayload(
 }
 
 const app = express()
+app.use(express.json({ limit: '32kb' }))
+attachSession(app)
+mountAuthRoutes(app)
 
 app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
     dist: existsSync(DIST),
     host: HOST,
+    authConfigured: authConfigured(),
     cacheTtlMs: CACHE_TTL_MS,
     usageResetsTtlMs: USAGE_RESETS_TTL_MS,
   })
 })
 
-app.get('/api/dashboard', async (req, res) => {
+app.get('/api/dashboard', requireAuth, async (req, res) => {
   try {
     const force = req.query.refresh === '1' || req.query.refresh === 'true'
     const payload = await buildPayload(req.query.range, force)
@@ -139,7 +150,7 @@ app.get('/api/dashboard', async (req, res) => {
   }
 })
 
-app.get('/api/system', (_req, res) => {
+app.get('/api/system', requireAuth, (_req, res) => {
   res.json(collectSystem())
 })
 
@@ -155,6 +166,13 @@ app.listen(PORT, HOST, () => {
   const servingUi = existsSync(DIST)
   const mode = servingUi ? 'API + UI' : 'API only'
   console.log(`agent-dashboard ${mode} on http://${HOST === '0.0.0.0' ? '127.0.0.1' : HOST}:${PORT}`)
+  if (!authConfigured()) {
+    console.log(
+      'Auth: GOOGLE_CLIENT_ID is not set. Copy .env.example to .env and add a Google OAuth Web client ID.',
+    )
+  } else {
+    console.log('Auth: Google sign-in is required before the dashboard loads.')
+  }
   if (HOST === '0.0.0.0' || HOST === '::') {
     const urls = lanUrls(PORT)
     if (urls.length > 0) {

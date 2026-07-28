@@ -19,6 +19,41 @@ Your machine is the source of truth:
 
 A remote host like Vercel cannot see those safely. This GitHub repo is only the source code. For phone viewing, keep the API on your Mac and open it over your LAN (below) - do not deploy the collectors to a public cloud.
 
+## Recommended setup (auto-start + Google login)
+
+You do **not** need `npm run dev` day to day. That is only for developers hacking on the UI.
+
+1. Install once:
+
+```bash
+git clone https://github.com/ctt062/agent-dashboard.git
+cd agent-dashboard
+npm install
+cp .env.example .env
+```
+
+2. Create a Google Cloud **OAuth Web client** and put the client ID in `.env`:
+
+```bash
+GOOGLE_CLIENT_ID=your-id.apps.googleusercontent.com
+ALLOWED_EMAILS=you@gmail.com
+```
+
+Authorized JavaScript origins (Google Cloud Console):
+
+- `http://127.0.0.1:3847`
+- optional LAN origin like `http://192.168.x.x:3847` for phone
+
+3. Build + install login auto-start:
+
+```bash
+npm run setup
+```
+
+After that, Agent Deck starts when you log into your Mac. Opening `http://127.0.0.1:3847` shows **Continue with Google**. Google verifies your email, then the dashboard loads.
+
+`npm run dev` is optional (hot reload for coding). Prefer `npm run setup` for normal use.
+
 ## Download
 
 ### Option A - Clone with Git
@@ -79,10 +114,16 @@ Only do this on a trusted network - LAN mode exposes local agent + Mac metrics t
 ## Start at login (macOS)
 
 ```bash
+npm run setup
+```
+
+or only the LaunchAgent piece:
+
+```bash
 npm run launchagent:install
 ```
 
-This installs a LaunchAgent that keeps Agent Deck running on `http://127.0.0.1:3847` and opens it once. Remove with:
+This keeps Agent Deck running (LAN-capable by default) and opens it once. Remove with:
 
 ```bash
 npm run launchagent:uninstall
@@ -106,7 +147,8 @@ Missing collectors degrade gracefully - each panel shows a short hint instead of
 - **Usage resets**: Per-provider token/limit reset times (Cursor billing cycle via local dashboard API, Codex ChatGPT wham/usage windows, Claude rolling 5h/weekly with `/usage` guidance when exact times are unavailable)
 - **Detailed agent stats**: period total, avg/day, active days, peak day, acceptance rate (Cursor), input/output tokens
 - **Dual-series charts** plus a cross-agent comparison chart
-- **Local web app**: `npm run serve` on loopback, or `npm run serve:lan` for phone access on the same Wi-Fi
+- **Google sign-in**: verified Gmail/Google account required before the dashboard (optional `ALLOWED_EMAILS` allowlist)
+- **Local web app**: `npm run setup` auto-starts at login; `serve:lan` / LaunchAgent for phone on the same Wi-Fi
 - **Cached collectors** (~10s TTL) with parallel collection; usage-reset lookups cache separately (~3 min). Refresh bypasses the collector cache
 
 ## Stack
@@ -144,8 +186,9 @@ HOST=0.0.0.0 PORT=4000 npm start
 ## Privacy
 
 - Dashboard stats come from files and tools already on your Mac
+- Google sign-in uses Google Identity Services; only verified emails can open the dashboard (optionally restricted by `ALLOWED_EMAILS`)
 - Usage-reset times use local Cursor / Codex / Claude credentials on this machine only to call those vendors' usage APIs; tokens are not sent to Agent Deck or any other service
-- Default bind is localhost; `serve:lan` exposes the dashboard on your LAN - use only on trusted Wi-Fi
+- Default LaunchAgent bind is LAN-capable (`HOST=0.0.0.0`) - use only on trusted Wi-Fi
 - The API has no open CORS; the Vite proxy and same-origin `serve` are enough for the UI
 - Do not deploy this app to Vercel/public cloud - collectors require your Mac
 
