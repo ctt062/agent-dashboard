@@ -24,12 +24,18 @@ export type UsageResetWindow = {
   /** ISO timestamp when this window resets; null if unknown / N/A */
   at: string | null
   usedPercent?: number
+  /** Absolute usage in provider units when known (plan credits, etc.) */
+  used?: number
+  limit?: number
+  unit?: string
   note?: string
 }
 
 export type UsageReset = {
   ok: boolean
   windows: UsageResetWindow[]
+  /** ISO start of the primary billing / plan cycle when known */
+  cycleStart?: string | null
   error?: string
 }
 

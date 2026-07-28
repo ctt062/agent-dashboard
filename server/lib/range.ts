@@ -1,20 +1,8 @@
-export const DATE_RANGES = ['1d', '7d', '30d', 'month'] as const
+export const DATE_RANGES = ['month'] as const
 export type DateRange = (typeof DATE_RANGES)[number]
 
-export function parseRange(value: unknown): DateRange {
-  if (typeof value === 'string' && (DATE_RANGES as readonly string[]).includes(value)) {
-    return value as DateRange
-  }
-  return '7d'
-}
-
-/** Inclusive day count for avg/day math. */
-export function daysInRange(range: DateRange, now = new Date()): number {
-  if (range === '1d') return 1
-  if (range === '7d') return 7
-  if (range === '30d') return 30
-  // This month: from the 1st through today (inclusive)
-  return Math.max(1, now.getDate())
+export function parseRange(_value?: unknown): DateRange {
+  return 'month'
 }
 
 export function formatLocalDate(d: Date): string {
@@ -31,22 +19,53 @@ export function localDateFromTimestamp(value: string): string | null {
   return formatLocalDate(d)
 }
 
-/** Inclusive start date (YYYY-MM-DD) for the selected range ending today. */
-export function rangeStartDate(range: DateRange, now = new Date()): string {
+/** Inclusive day count between YYYY-MM-DD start and end (local calendar). */
+export function inclusiveDayCount(startYmd: string, endYmd: string): number {
+  const [sy, sm, sd] = startYmd.split('-').map(Number)
+  const [ey, em, ed] = endYmd.split('-').map(Number)
+  const start = new Date(sy, sm - 1, sd)
+  const end = new Date(ey, em - 1, ed)
+  const diff = Math.round((end.getTime() - start.getTime()) / 86_400_000)
+  return Math.max(1, diff + 1)
+}
+
+/**
+ * Start date for a billing-cycle window.
+ * Prefers provider cycleStart; falls back to the 1st of the local month.
+ */
+export function billingCycleStartDate(
+  cycleStartIso: string | null | undefined,
+  now = new Date(),
+): string {
+  if (cycleStartIso) {
+    const ymd = localDateFromTimestamp(cycleStartIso)
+    if (ymd) return ymd
+  }
   const d = new Date(now)
   d.setHours(0, 0, 0, 0)
-  if (range === 'month') {
-    d.setDate(1)
-    return formatLocalDate(d)
-  }
-  const days = daysInRange(range, now)
-  d.setDate(d.getDate() - (days - 1))
+  d.setDate(1)
   return formatLocalDate(d)
 }
 
-export function rangeLabel(range: DateRange): string {
-  if (range === '1d') return 'Today'
-  if (range === '7d') return '7 days'
-  if (range === '30d') return '30 days'
-  return 'This month'
+/** Inclusive day count for avg/day math in the billing cycle. */
+export function daysInRange(
+  _range: DateRange = 'month',
+  now = new Date(),
+  cycleStartIso?: string | null,
+): number {
+  const start = billingCycleStartDate(cycleStartIso, now)
+  return inclusiveDayCount(start, formatLocalDate(now))
+}
+
+/** Inclusive start date (YYYY-MM-DD) for this billing cycle. */
+export function rangeStartDate(
+  _range: DateRange = 'month',
+  now = new Date(),
+  cycleStartIso?: string | null,
+): string {
+  return billingCycleStartDate(cycleStartIso, now)
+}
+
+export function rangeLabel(_range: DateRange = 'month'): string {
+  return 'This billing cycle'
 }

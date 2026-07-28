@@ -1,68 +1,34 @@
-declare global {
-  interface Window {
-    __AGENT_DECK_API_BASE__?: string
-  }
-}
-
-const TOKEN_KEY = 'agent_deck_token'
-
-function trimSlash(value: string): string {
-  return value.replace(/\/$/, '')
-}
-
-/** Build-time VITE_API_BASE, overridden by runtime `window.__AGENT_DECK_API_BASE__`. */
-export function apiBase(): string {
-  const runtime =
-    typeof window !== 'undefined' ? window.__AGENT_DECK_API_BASE__ : undefined
-  if (typeof runtime === 'string' && runtime.trim()) {
-    return trimSlash(runtime.trim())
-  }
-  const baked = import.meta.env.VITE_API_BASE
-  if (typeof baked === 'string' && baked.trim()) {
-    return trimSlash(baked.trim())
-  }
-  return ''
-}
-
-export function apiUrl(path: string): string {
-  const base = apiBase()
-  const p = path.startsWith('/') ? path : `/${path}`
-  return `${base}${p}`
-}
-
-export function getAuthToken(): string | null {
-  try {
-    return sessionStorage.getItem(TOKEN_KEY)
-  } catch {
-    return null
-  }
-}
-
-export function setAuthToken(token: string | null): void {
-  try {
-    if (token) sessionStorage.setItem(TOKEN_KEY, token)
-    else sessionStorage.removeItem(TOKEN_KEY)
-  } catch {
-    /* ignore quota / private mode */
-  }
-}
-
-export function clearAuthToken(): void {
-  setAuthToken(null)
-}
-
 export function apiFetch(
   path: string,
   init?: RequestInit,
 ): Promise<Response> {
-  const headers = new Headers(init?.headers)
-  const token = getAuthToken()
-  if (token && !headers.has('Authorization')) {
-    headers.set('Authorization', `Bearer ${token}`)
+  const p = path.startsWith('/') ? path : `/${path}`
+  return fetch(p, init)
+}
+
+/** Parse API JSON; surface a clear error when HTML is returned by mistake. */
+export async function readApiJson<T>(res: Response): Promise<T> {
+  const contentType = res.headers.get('content-type') ?? ''
+  const text = await res.text()
+  const trimmed = text.trimStart()
+  const looksLikeHtml =
+    trimmed.startsWith('<!doctype') ||
+    trimmed.startsWith('<!DOCTYPE') ||
+    trimmed.startsWith('<html')
+
+  if (looksLikeHtml || contentType.includes('text/html')) {
+    throw new Error(
+      'API returned HTML instead of JSON. Is Agent Deck running on this Mac?',
+    )
   }
-  return fetch(apiUrl(path), {
-    ...init,
-    headers,
-    credentials: 'include',
-  })
+
+  if (!trimmed) {
+    throw new Error(`Empty API response (HTTP ${res.status})`)
+  }
+
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    throw new Error(`API response was not JSON (HTTP ${res.status}).`)
+  }
 }

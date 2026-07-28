@@ -2,10 +2,10 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { formatResetAt, rangeLabel, DATE_RANGES } from '../../src/lib/types.ts'
 
-describe('frontend range + reset display helpers', () => {
-  it('keeps This month in the UI date-range set', () => {
-    assert.deepEqual(DATE_RANGES, ['1d', '7d', '30d', 'month'])
-    assert.equal(rangeLabel('month'), 'This month')
+describe('frontend billing-cycle helpers', () => {
+  it('only exposes this billing cycle', () => {
+    assert.deepEqual(DATE_RANGES, ['month'])
+    assert.equal(rangeLabel('month'), 'This billing cycle')
   })
 
   it('formats provider reset timestamps for display (not local midnight only)', () => {
