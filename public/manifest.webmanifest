@@ -1,0 +1,17 @@
+{
+  "name": "Agent Deck",
+  "short_name": "Agent Deck",
+  "description": "Local macOS AI agent dashboard",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

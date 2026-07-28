@@ -2,9 +2,14 @@ import { createReadStream, existsSync, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
+import { buildStats } from '../lib/agents.js'
+import { localDateFromTimestamp } from '../lib/range.js'
 import type { AgentUsage, DailyPoint } from '../types.js'
 
 const SESSIONS = join(homedir(), '.codex', 'sessions')
+
+const HINT =
+  'Run Codex so session JSONL rollouts appear under ~/.codex/sessions/.'
 
 function walkJsonl(dir: string, out: string[] = []): string[] {
   if (!existsSync(dir)) return out
@@ -34,13 +39,28 @@ function pickUsage(obj: unknown): Record<string, number> | null {
 export async function collectCodex(): Promise<AgentUsage> {
   const byDay = new Map<
     string,
-    { tokens: number; events: number }
+    { tokens: number; events: number; input: number; output: number }
   >()
   let sessions = 0
   let events = 0
   let inputTokens = 0
   let outputTokens = 0
   let note: string | undefined
+  const rootExists = existsSync(SESSIONS)
+
+  if (!rootExists) {
+    return {
+      id: 'codex',
+      name: 'Codex',
+      score: 0,
+      available: false,
+      metrics: {},
+      daily: [],
+      stats: buildStats([], 30),
+      note: 'Codex sessions folder not found.',
+      hint: HINT,
+    }
+  }
 
   try {
     const files = walkJsonl(SESSIONS)
@@ -62,10 +82,15 @@ export async function collectCodex(): Promise<AgentUsage> {
         events += 1
         const ts =
           typeof o.timestamp === 'string'
-            ? o.timestamp.slice(0, 10)
+            ? localDateFromTimestamp(o.timestamp) ?? dayFromName
             : dayFromName
         if (ts) {
-          const cur = byDay.get(ts) ?? { tokens: 0, events: 0 }
+          const cur = byDay.get(ts) ?? {
+            tokens: 0,
+            events: 0,
+            input: 0,
+            output: 0,
+          }
           cur.events += 1
           byDay.set(ts, cur)
         }
@@ -86,8 +111,15 @@ export async function collectCodex(): Promise<AgentUsage> {
         inputTokens += Number(inn) || 0
         outputTokens += Number(outn) || 0
         if (ts && total > 0) {
-          const cur = byDay.get(ts) ?? { tokens: 0, events: 0 }
+          const cur = byDay.get(ts) ?? {
+            tokens: 0,
+            events: 0,
+            input: 0,
+            output: 0,
+          }
           cur.tokens += total
+          cur.input += Number(inn) || 0
+          cur.output += Number(outn) || 0
           byDay.set(ts, cur)
         }
       }
@@ -96,23 +128,37 @@ export async function collectCodex(): Promise<AgentUsage> {
     note = err instanceof Error ? err.message : String(err)
   }
 
+  const totalTokens = inputTokens + outputTokens
   const daily: DailyPoint[] = [...byDay.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-60)
-    .map(([date, v]) => ({
-      date,
-      value: v.tokens > 0 ? v.tokens : v.events,
-      label: v.tokens > 0 ? 'tokens' : 'events',
-    }))
+    .slice(-90)
+    .map(([date, v]) => {
+      const useTokens = v.tokens > 0
+      return {
+        date,
+        primary: useTokens ? v.tokens : v.events,
+        secondary: useTokens ? v.output : undefined,
+        primaryLabel: useTokens ? 'tokens' : 'events',
+        secondaryLabel: useTokens ? 'output' : undefined,
+        extras: {
+          tokens: v.tokens,
+          events: v.events,
+          input: v.input,
+          output: v.output,
+        },
+      }
+    })
 
-  const totalTokens = inputTokens + outputTokens
+  const stats = buildStats(daily, 30)
   const score =
     totalTokens > 0 ? totalTokens : events * 120 + sessions * 1500
+  const available = !note && (sessions > 0 || events > 0)
 
   return {
     id: 'codex',
     name: 'Codex',
     score,
+    available,
     metrics: {
       sessions,
       events,
@@ -121,10 +167,14 @@ export async function collectCodex(): Promise<AgentUsage> {
       totalTokens,
     },
     daily,
+    stats,
     note:
       note ??
-      (totalTokens === 0 && sessions > 0
-        ? 'Session logs found; token usage sparse in local rollouts. Score uses event volume.'
-        : undefined),
+      (!available
+        ? 'No Codex session logs yet.'
+        : totalTokens === 0 && sessions > 0
+          ? 'Sessions found; token usage sparse in local rollouts. Score uses event volume.'
+          : undefined),
+    hint: !available && !note ? HINT : undefined,
   }
 }

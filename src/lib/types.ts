@@ -1,7 +1,34 @@
+export const DATE_RANGES = ['1d', '7d', '30d', 'month'] as const
+export type DateRange = (typeof DATE_RANGES)[number]
+
 export type DailyPoint = {
   date: string
-  value: number
+  primary: number
+  secondary?: number
+  primaryLabel: string
+  secondaryLabel?: string
+  extras?: Record<string, number>
+}
+
+export type AgentStats = {
+  activeDays: number
+  avgPerDay: number
+  peakDay: string | null
+  peakValue: number
+  periodTotal: number
+}
+
+export type UsageResetWindow = {
   label: string
+  at: string | null
+  usedPercent?: number
+  note?: string
+}
+
+export type UsageReset = {
+  ok: boolean
+  windows: UsageResetWindow[]
+  error?: string
 }
 
 export type AgentShare = {
@@ -9,9 +36,13 @@ export type AgentShare = {
   name: string
   score: number
   percent: number
+  available: boolean
   metrics: Record<string, number>
   daily: DailyPoint[]
+  stats: AgentStats
+  usageReset?: UsageReset
   note?: string
+  hint?: string
 }
 
 export type SystemSnapshot = {
@@ -41,10 +72,13 @@ export type GithubSnapshot = {
   login: string | null
   totalContributions: number
   days: GithubDay[]
+  hint?: string
 }
 
 export type DashboardPayload = {
   generatedAt: string
+  range: DateRange
+  cached: boolean
   agents: AgentShare[]
   system: SystemSnapshot
   github: GithubSnapshot
@@ -68,4 +102,24 @@ export function formatUptime(sec: number): string {
   if (d > 0) return `${d}d ${h}h`
   if (h > 0) return `${h}h ${m}m`
   return `${m}m`
+}
+
+export function rangeLabel(range: DateRange): string {
+  if (range === '1d') return 'Today'
+  if (range === '7d') return '7 days'
+  if (range === '30d') return '30 days'
+  return 'This month'
+}
+
+export function formatResetAt(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleString(undefined, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
 }

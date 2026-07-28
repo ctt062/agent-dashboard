@@ -1,7 +1,36 @@
+import type { DateRange } from './lib/range.js'
+
 export type DailyPoint = {
   date: string
-  value: number
+  primary: number
+  secondary?: number
+  primaryLabel: string
+  secondaryLabel?: string
+  /** Extra numeric breakdown for tooltips and period rollups */
+  extras?: Record<string, number>
+}
+
+export type AgentStats = {
+  activeDays: number
+  avgPerDay: number
+  peakDay: string | null
+  peakValue: number
+  periodTotal: number
+}
+
+/** Provider-specific token/usage limit reset windows. */
+export type UsageResetWindow = {
   label: string
+  /** ISO timestamp when this window resets; null if unknown / N/A */
+  at: string | null
+  usedPercent?: number
+  note?: string
+}
+
+export type UsageReset = {
+  ok: boolean
+  windows: UsageResetWindow[]
+  error?: string
 }
 
 export type AgentUsage = {
@@ -9,9 +38,14 @@ export type AgentUsage = {
   name: string
   /** Comparable activity score used for percentage share */
   score: number
+  available: boolean
   metrics: Record<string, number>
   daily: DailyPoint[]
+  stats: AgentStats
+  usageReset?: UsageReset
   note?: string
+  /** How to enable this collector when data is missing */
+  hint?: string
 }
 
 export type AgentShare = AgentUsage & {
@@ -45,11 +79,22 @@ export type GithubSnapshot = {
   login: string | null
   totalContributions: number
   days: GithubDay[]
+  hint?: string
 }
 
 export type DashboardPayload = {
   generatedAt: string
+  range: DateRange
+  cached: boolean
   agents: AgentShare[]
+  system: SystemSnapshot
+  github: GithubSnapshot
+}
+
+export type RawCollectors = {
+  cursor: AgentUsage
+  claude: AgentUsage
+  codex: AgentUsage
   system: SystemSnapshot
   github: GithubSnapshot
 }

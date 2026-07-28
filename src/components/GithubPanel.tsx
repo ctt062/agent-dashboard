@@ -53,10 +53,15 @@ export function GithubPanel({ github }: Props) {
           ))}
         </div>
       ) : (
-        <p className="err">
-          Run <code>gh auth login</code> so this machine can read your
-          contribution calendar.
-        </p>
+        <div className="err-box">
+          <p className="err">{github.error ?? 'Unavailable'}</p>
+          {github.hint ? <p className="hint">{github.hint}</p> : (
+            <p className="hint">
+              Run <code>gh auth login</code> so this machine can read your
+              contribution calendar.
+            </p>
+          )}
+        </div>
       )}
       <style>{`
         .gh {
@@ -80,7 +85,9 @@ export function GithubPanel({ github }: Props) {
           width: 11px; height: 11px; display: block;
           border: 1px solid #101010;
         }
+        .err-box { display: flex; flex-direction: column; gap: 0.45rem; }
         .err { margin: 0; color: var(--muted); font-size: 0.8rem; }
+        .hint { margin: 0; color: var(--dim); font-size: 0.75rem; line-height: 1.45; }
         code {
           font-family: inherit;
           color: var(--text);
