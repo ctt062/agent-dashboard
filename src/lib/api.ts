@@ -4,6 +4,8 @@ declare global {
   }
 }
 
+const TOKEN_KEY = 'agent_deck_token'
+
 function trimSlash(value: string): string {
   return value.replace(/\/$/, '')
 }
@@ -28,12 +30,39 @@ export function apiUrl(path: string): string {
   return `${base}${p}`
 }
 
+export function getAuthToken(): string | null {
+  try {
+    return sessionStorage.getItem(TOKEN_KEY)
+  } catch {
+    return null
+  }
+}
+
+export function setAuthToken(token: string | null): void {
+  try {
+    if (token) sessionStorage.setItem(TOKEN_KEY, token)
+    else sessionStorage.removeItem(TOKEN_KEY)
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+export function clearAuthToken(): void {
+  setAuthToken(null)
+}
+
 export function apiFetch(
   path: string,
   init?: RequestInit,
 ): Promise<Response> {
+  const headers = new Headers(init?.headers)
+  const token = getAuthToken()
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
   return fetch(apiUrl(path), {
     ...init,
+    headers,
     credentials: 'include',
   })
 }

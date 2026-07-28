@@ -48,6 +48,9 @@ describe('LAN phone webapp intent', () => {
     assert.match(readme, /npm run dev:lan/)
     assert.match(readme, /Add to Home Screen/)
     assert.match(readme, /Google GIS does \*\*not\*\* accept raw LAN IPs/)
+    assert.match(readme, /127\.0\.0\.1:5174/)
+    assert.match(readme, /localhost:5174/)
+    assert.match(readme, /Bearer token/)
     assert.doesNotMatch(
       readme,
       /Authorized JavaScript origins[\s\S]{0,400}192\.168/,

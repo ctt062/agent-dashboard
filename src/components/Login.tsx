@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { apiFetch } from '../lib/api'
+import { apiFetch, setAuthToken } from '../lib/api'
 
 type AuthMode = 'google' | 'pin'
 
@@ -117,12 +117,14 @@ export function Login({ onSignedIn }: Props) {
               })
               const json = (await res.json()) as {
                 user?: AuthUser
+                token?: string
                 message?: string
                 error?: string
               }
-              if (!res.ok || !json.user) {
+              if (!res.ok || !json.user || !json.token) {
                 throw new Error(json.message ?? json.error ?? `HTTP ${res.status}`)
               }
+              setAuthToken(json.token)
               onSignedIn(json.user)
             } catch (err) {
               setError(err instanceof Error ? err.message : String(err))
@@ -166,12 +168,14 @@ export function Login({ onSignedIn }: Props) {
       })
       const json = (await res.json()) as {
         user?: AuthUser
+        token?: string
         message?: string
         error?: string
       }
-      if (!res.ok || !json.user) {
+      if (!res.ok || !json.user || !json.token) {
         throw new Error(json.message ?? json.error ?? `HTTP ${res.status}`)
       }
+      setAuthToken(json.token)
       onSignedIn(json.user)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -228,7 +232,10 @@ export function Login({ onSignedIn }: Props) {
                   </li>
                   <li>
                     Add authorized JavaScript origins:{' '}
-                    <code>http://127.0.0.1:3847</code> and{' '}
+                    <code>http://127.0.0.1:3847</code>,{' '}
+                    <code>http://localhost:3847</code>,{' '}
+                    <code>http://127.0.0.1:5174</code>,{' '}
+                    <code>http://localhost:5174</code>, and{' '}
                     <code>{publicOrigin}</code>
                   </li>
                   <li>

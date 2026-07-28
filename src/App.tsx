@@ -3,7 +3,7 @@ import { AgentPanel } from './components/AgentPanel'
 import { GithubPanel } from './components/GithubPanel'
 import { Login } from './components/Login'
 import { SystemPanel } from './components/SystemPanel'
-import { apiFetch } from './lib/api'
+import { apiFetch, clearAuthToken } from './lib/api'
 import type { DashboardPayload, DateRange } from './lib/types'
 
 const REFRESH_MS = 15_000
@@ -63,6 +63,7 @@ export default function App() {
           signal: controller.signal,
         })
         if (res.status === 401 || res.status === 503) {
+          if (res.status === 401) clearAuthToken()
           setUser(null)
           setData(null)
           throw new Error(
@@ -104,6 +105,7 @@ export default function App() {
     } catch {
       /* ignore */
     }
+    clearAuthToken()
     setUser(null)
     setData(null)
   }

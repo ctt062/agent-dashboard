@@ -12,6 +12,17 @@ import {
   isLanBindHost,
   publicOriginFromEnv,
 } from './lib/auth-mode.js'
+import {
+  bearerFromAuthorization,
+  issueBearerToken,
+  verifyBearerToken,
+} from './lib/bearer-token.js'
+import {
+  checkPinRateLimit,
+  clearPinFailures,
+  createPinRateLimitStore,
+  recordPinFailure,
+} from './lib/pin-rate-limit.js'
 
 export type AuthUser = {
   email: string
@@ -29,6 +40,8 @@ declare module 'express-serve-static-core' {
 type SessionData = {
   user?: AuthUser
 }
+
+const pinAttemptStore = createPinRateLimitStore()
 
 function configDir(): string {
   const dir = join(homedir(), '.config', 'agent-deck')
@@ -116,9 +129,13 @@ function pinMatches(input: string): boolean {
   return timingSafeEqual(a, b)
 }
 
-function isCrossSitePublicOrigin(req: Request): boolean {
-  const origin = req.get('origin')?.replace(/\/$/, '')
-  return Boolean(origin && origin === publicOrigin())
+function clientIp(req: Request): string {
+  const forwarded = req.get('x-forwarded-for')
+  if (forwarded) {
+    const first = forwarded.split(',')[0]?.trim()
+    if (first) return first
+  }
+  return req.ip || req.socket.remoteAddress || 'unknown'
 }
 
 export function attachCors(app: Express): void {
@@ -149,26 +166,16 @@ export function attachCors(app: Express): void {
 export function attachSession(app: Express): void {
   app.set('trust proxy', 1)
   const secret = sessionSecret()
-  const localSession = cookieSession({
-    name: 'agent_deck_session',
-    keys: [secret],
-    maxAge: 30 * 24 * 60 * 60 * 1000,
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: false,
-  })
-  const crossSession = cookieSession({
-    name: 'agent_deck_session',
-    keys: [secret],
-    maxAge: 30 * 24 * 60 * 60 * 1000,
-    httpOnly: true,
-    sameSite: 'none',
-    secure: true,
-  })
-  app.use((req, res, next) => {
-    const mw = isCrossSitePublicOrigin(req) ? crossSession : localSession
-    mw(req, res, next)
-  })
+  app.use(
+    cookieSession({
+      name: 'agent_deck_session',
+      keys: [secret],
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: false,
+    }),
+  )
 }
 
 function readSession(req: Request): SessionData {
@@ -177,6 +184,23 @@ function readSession(req: Request): SessionData {
 
 function modeConfigured(mode: AuthMode): boolean {
   return mode === 'google' ? googleAuthReady() : pinAuthReady()
+}
+
+function resolveUser(req: Request): AuthUser | null {
+  const bearer = bearerFromAuthorization(req.get('authorization'))
+  if (bearer) {
+    const user = verifyBearerToken(bearer, sessionSecret())
+    if (user) return user
+  }
+  return readSession(req).user ?? null
+}
+
+function issueAuthResponse(req: Request, res: Response, user: AuthUser): void {
+  const session = readSession(req)
+  session.user = user
+  req.session = session
+  const token = issueBearerToken(user, sessionSecret())
+  res.json({ user, token })
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
@@ -192,7 +216,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     })
     return
   }
-  const user = readSession(req).user
+  const user = resolveUser(req)
   if (!user?.email) {
     res.status(401).json({ error: 'unauthorized', mode })
     return
@@ -225,7 +249,7 @@ export function mountAuthRoutes(app: Express): void {
       })
       return
     }
-    const user = readSession(req).user
+    const user = resolveUser(req)
     if (!user?.email) {
       res.status(401).json({ error: 'unauthorized', configured: true, mode })
       return
@@ -298,10 +322,7 @@ export function mountAuthRoutes(app: Express): void {
         picture: payload.picture ?? null,
         method: 'google',
       }
-      const session = readSession(req)
-      session.user = user
-      req.session = session
-      res.json({ user })
+      issueAuthResponse(req, res, user)
     } catch (err) {
       res.status(401).json({
         error: 'verify_failed',
@@ -324,21 +345,45 @@ export function mountAuthRoutes(app: Express): void {
       res.status(503).json({ error: 'auth_not_configured', mode })
       return
     }
+
+    const ip = clientIp(req)
+    const limited = checkPinRateLimit(pinAttemptStore, ip)
+    if (!limited.ok) {
+      const retryAfterSec = Math.max(1, Math.ceil(limited.retryAfterMs / 1000))
+      res.setHeader('Retry-After', String(retryAfterSec))
+      res.status(429).json({
+        error: 'pin_rate_limited',
+        message: `Too many incorrect PIN attempts. Try again in ${retryAfterSec}s.`,
+        retryAfterMs: limited.retryAfterMs,
+      })
+      return
+    }
+
     const pin = typeof req.body?.pin === 'string' ? req.body.pin : ''
     if (!pinMatches(pin)) {
+      const result = recordPinFailure(pinAttemptStore, ip)
+      if (result.retryAfterMs > 0) {
+        const retryAfterSec = Math.max(1, Math.ceil(result.retryAfterMs / 1000))
+        res.setHeader('Retry-After', String(retryAfterSec))
+        res.status(429).json({
+          error: 'pin_rate_limited',
+          message: `Too many incorrect PIN attempts. Try again in ${retryAfterSec}s.`,
+          retryAfterMs: result.retryAfterMs,
+        })
+        return
+      }
       res.status(401).json({ error: 'invalid_pin', message: 'Incorrect PIN.' })
       return
     }
+
+    clearPinFailures(pinAttemptStore, ip)
     const user: AuthUser = {
       email: 'pin@local',
       name: 'PIN access',
       picture: null,
       method: 'pin',
     }
-    const session = readSession(req)
-    session.user = user
-    req.session = session
-    res.json({ user })
+    issueAuthResponse(req, res, user)
   })
 
   app.post('/api/auth/logout', (req, res) => {

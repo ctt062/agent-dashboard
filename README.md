@@ -43,7 +43,8 @@ PUBLIC_ORIGIN=https://agent-dashboard-ctt.vercel.app
 
 Authorized JavaScript origins (Google Cloud Console) - Google GIS does **not** accept raw LAN IPs:
 
-- `http://127.0.0.1:3847`
+- `http://127.0.0.1:3847` and `http://localhost:3847` (production serve)
+- `http://127.0.0.1:5174` and `http://localhost:5174` (`npm run dev`)
 - `https://agent-dashboard-ctt.vercel.app` (or your `PUBLIC_ORIGIN`)
 
 3. Build + install login auto-start:
@@ -71,6 +72,7 @@ Public UI: [https://agent-dashboard-ctt.vercel.app/](https://agent-dashboard-ctt
    - runtime `public/runtime-config.js` → `window.__AGENT_DECK_API_BASE__`
 3. Prefer an **HTTPS tunnel** to the Mac when the UI is on HTTPS (browsers block mixed content to bare `http://192.168.x.x`).
 4. On the Mac, keep `PUBLIC_ORIGIN=https://agent-dashboard-ctt.vercel.app` so CORS allows that origin + localhost only (no wildcard, no raw LAN origins).
+5. Sign-in returns a **Bearer token** stored in the browser (`sessionStorage`) and sent as `Authorization: Bearer …`. Do not rely on third-party cookies for Vercel → Mac.
 
 Collectors and `/api/*` still run on the Mac.
 
@@ -167,7 +169,7 @@ Missing collectors degrade gracefully - each panel shows a short hint instead of
 - **Usage resets**: Per-provider token/limit reset times (Cursor billing cycle via local dashboard API, Codex ChatGPT wham/usage windows, Claude rolling 5h/weekly with `/usage` guidance when exact times are unavailable)
 - **Detailed agent stats**: period total, avg/day, active days, peak day, acceptance rate (Cursor), input/output tokens
 - **Dual-series charts** plus a cross-agent comparison chart
-- **Dual auth**: Google on localhost / `PUBLIC_ORIGIN`; PIN on LAN IPs; `ALLOWED_EMAILS` + `DASHBOARD_PIN` required for LAN bind
+- **Dual auth**: Google on localhost / `PUBLIC_ORIGIN`; PIN on LAN IPs; Bearer token for Vercel → Mac API; `ALLOWED_EMAILS` + `DASHBOARD_PIN` required for LAN bind
 - **Local web app**: `npm run setup` auto-starts at login; `serve:lan` / LaunchAgent for phone on the same Wi-Fi
 - **Cached collectors** (~10s TTL) with parallel collection; usage-reset lookups cache separately (~3 min). Refresh bypasses both caches
 
@@ -208,7 +210,9 @@ HOST=0.0.0.0 PORT=4000 npm start
 
 - Dashboard stats come from files and tools already on your Mac
 - Google sign-in uses Google Identity Services on localhost and `PUBLIC_ORIGIN`; LAN IPs use PIN instead
+- Cross-origin Vercel UI uses Bearer tokens (not third-party cookies); Mac same-origin UI may still use session cookies
 - When LAN bind is enabled, `ALLOWED_EMAILS` and `DASHBOARD_PIN` are required
+- Failed PIN attempts are rate-limited in memory per client IP
 - Usage-reset times use local Cursor / Codex / Claude credentials on this machine only to call those vendors' usage APIs; tokens are not sent to Agent Deck or any other service
 - Default LaunchAgent bind is LAN-capable (`HOST=0.0.0.0`) - use only on trusted Wi-Fi
 - CORS allowlists localhost + `PUBLIC_ORIGIN` only (no wildcard)
