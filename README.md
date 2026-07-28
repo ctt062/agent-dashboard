@@ -78,40 +78,25 @@ Collectors and `/api/*` still run on the Mac.
 
 ## Download
 
-### Option A - Clone with Git
+Day-to-day install is [Recommended setup](#recommended-setup-auto-start--dual-auth) (`.env` auth + `npm run setup`). Auth is required for dashboard data.
 
-```bash
-git clone https://github.com/ctt062/agent-dashboard.git
-cd agent-dashboard
-npm install
-npm run dev
-```
-
-### Option B - ZIP download (no Git)
+### ZIP (no Git)
 
 1. Open https://github.com/ctt062/agent-dashboard
 2. Click **Code → Download ZIP**
-3. Unzip, then in that folder:
-
-```bash
-npm install
-npm run dev
-```
-
-Open **http://127.0.0.1:5174**
+3. Unzip, then continue from `cp .env.example .env` in Recommended setup.
 
 ### One-command production serve
 
-Builds the UI and serves API + static UI from one localhost port:
+After `.env` is configured (see Recommended setup), build and serve API + static UI on one port:
 
 ```bash
-npm install
 npm run serve
 ```
 
-Open **http://127.0.0.1:3847**
+Open **http://127.0.0.1:3847** (Google sign-in).
 
-`npm start` alone also works after `npm run build` (serves `dist/` when present).
+`npm start` alone also works after `npm run build` (serves `dist/` when present). Hot-reload coding: `npm run dev` → **http://127.0.0.1:5174**.
 
 ## View on your phone (same Wi-Fi)
 
@@ -135,21 +120,13 @@ Only do this on a trusted network - LAN mode exposes local agent + Mac metrics t
 
 ## Start at login (macOS)
 
-```bash
-npm run setup
-```
-
-or only the LaunchAgent piece:
+Use `npm run setup` from [Recommended setup](#recommended-setup-auto-start--dual-auth) (requires `.env` auth when LAN-bound). LaunchAgent only:
 
 ```bash
 npm run launchagent:install
 ```
 
-This keeps Agent Deck running (LAN-capable by default) and opens it once. Remove with:
-
-```bash
-npm run launchagent:uninstall
-```
+Remove with `npm run launchagent:uninstall`.
 
 ## Requirements
 
@@ -169,7 +146,7 @@ Missing collectors degrade gracefully - each panel shows a short hint instead of
 - **Usage resets**: Per-provider token/limit reset times (Cursor billing cycle via local dashboard API, Codex ChatGPT wham/usage windows, Claude rolling 5h/weekly with `/usage` guidance when exact times are unavailable)
 - **Detailed agent stats**: period total, avg/day, active days, peak day, acceptance rate (Cursor), input/output tokens
 - **Dual-series charts** plus a cross-agent comparison chart
-- **Dual auth**: Google on localhost / `PUBLIC_ORIGIN`; PIN on LAN IPs; Bearer token for Vercel → Mac API; `ALLOWED_EMAILS` + `DASHBOARD_PIN` required for LAN bind
+- **Dual auth**: Google on localhost / `PUBLIC_ORIGIN`; PIN on LAN IPs; Bearer token for Vercel → Mac API; `GOOGLE_CLIENT_ID` + `ALLOWED_EMAILS` + `DASHBOARD_PIN` required for LAN bind
 - **Local web app**: `npm run setup` auto-starts at login; `serve:lan` / LaunchAgent for phone on the same Wi-Fi
 - **Cached collectors** (~10s TTL) with parallel collection; usage-reset lookups cache separately (~3 min). Refresh bypasses both caches
 
@@ -193,11 +170,13 @@ Agent % is **relative share** of a local activity score across Cursor, Claude Co
 
 Default bind is `127.0.0.1`. Use `HOST=0.0.0.0` (or `npm run serve:lan`) for LAN/phone access.
 
+`/api/dashboard` and `/api/system` require auth (session cookie and/or `Authorization: Bearer …`). `/api/health` and `/api/auth/*` are reachable without a prior session (sign-in routes issue the token).
+
 | Endpoint | Description |
 |----------|-------------|
-| `GET /api/dashboard?range=1d\|7d\|30d\|month` | Full payload (agents + system + GitHub). Add `refresh=1` to bypass cache. |
-| `GET /api/system` | Mac snapshot only |
-| `GET /api/health` | Liveness check |
+| `GET /api/dashboard?range=1d\|7d\|30d\|month` | Full payload (agents + system + GitHub). Add `refresh=1` to bypass cache. Auth required. |
+| `GET /api/system` | Mac snapshot only. Auth required. |
+| `GET /api/health` | Liveness check (no auth) |
 | `GET /api/auth/config` | Auth mode for this Host/Origin (`google` or `pin`) |
 
 Override host/port if needed:
@@ -211,7 +190,7 @@ HOST=0.0.0.0 PORT=4000 npm start
 - Dashboard stats come from files and tools already on your Mac
 - Google sign-in uses Google Identity Services on localhost and `PUBLIC_ORIGIN`; LAN IPs use PIN instead
 - Cross-origin Vercel UI uses Bearer tokens (not third-party cookies); Mac same-origin UI may still use session cookies
-- When LAN bind is enabled, `ALLOWED_EMAILS` and `DASHBOARD_PIN` are required
+- When LAN bind is enabled, `GOOGLE_CLIENT_ID`, `ALLOWED_EMAILS`, and `DASHBOARD_PIN` are required
 - Failed PIN attempts are rate-limited in memory per client IP
 - Usage-reset times use local Cursor / Codex / Claude credentials on this machine only to call those vendors' usage APIs; tokens are not sent to Agent Deck or any other service
 - Default LaunchAgent bind is LAN-capable (`HOST=0.0.0.0`) - use only on trusted Wi-Fi
