@@ -1,95 +1,55 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AgentPanel } from './components/AgentPanel'
 import { GithubPanel } from './components/GithubPanel'
-import { Login } from './components/Login'
 import { SystemPanel } from './components/SystemPanel'
-import { apiFetch, clearAuthToken } from './lib/api'
-import type { DashboardPayload, DateRange } from './lib/types'
+import { apiFetch, readApiJson } from './lib/api'
+import type { DashboardPayload } from './lib/types'
 
 const REFRESH_MS = 15_000
 
-type AuthUser = {
-  email: string
-  name: string | null
-  picture: string | null
-  method?: 'google' | 'pin'
-}
-
 export default function App() {
-  const [authChecked, setAuthChecked] = useState(false)
-  const [user, setUser] = useState<AuthUser | null>(null)
-  const [range, setRange] = useState<DateRange>('7d')
   const [data, setData] = useState<DashboardPayload | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const abortRef = useRef<AbortController | null>(null)
   const inFlightRef = useRef(false)
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const res = await apiFetch('/api/auth/me')
-        if (res.ok) {
-          const json = (await res.json()) as { user: AuthUser }
-          setUser(json.user)
-        } else {
-          setUser(null)
-        }
-      } catch {
-        setUser(null)
-      } finally {
-        setAuthChecked(true)
-      }
-    })()
+  const load = useCallback(async (opts?: {
+    refresh?: boolean
+    mode?: 'replace' | 'poll'
+  }) => {
+    const mode = opts?.mode ?? 'replace'
+
+    if (mode === 'poll') {
+      if (inFlightRef.current) return
+    } else {
+      abortRef.current?.abort()
+    }
+
+    const controller = new AbortController()
+    abortRef.current = controller
+    inFlightRef.current = true
+    try {
+      const params = new URLSearchParams({ range: 'month' })
+      if (opts?.refresh) params.set('refresh', '1')
+      const res = await apiFetch(`/api/dashboard?${params}`, {
+        signal: controller.signal,
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const json = await readApiJson<DashboardPayload>(res)
+      if (controller.signal.aborted) return
+      setData(json)
+      setError(null)
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      if (abortRef.current === controller) inFlightRef.current = false
+      if (!controller.signal.aborted) setLoading(false)
+    }
   }, [])
 
-  const load = useCallback(
-    async (opts?: { refresh?: boolean; mode?: 'replace' | 'poll' }) => {
-      const mode = opts?.mode ?? 'replace'
-
-      if (mode === 'poll') {
-        if (inFlightRef.current) return
-      } else {
-        abortRef.current?.abort()
-      }
-
-      const controller = new AbortController()
-      abortRef.current = controller
-      inFlightRef.current = true
-      try {
-        const params = new URLSearchParams({ range })
-        if (opts?.refresh) params.set('refresh', '1')
-        const res = await apiFetch(`/api/dashboard?${params}`, {
-          signal: controller.signal,
-        })
-        if (res.status === 401 || res.status === 503) {
-          if (res.status === 401) clearAuthToken()
-          setUser(null)
-          setData(null)
-          throw new Error(
-            res.status === 503
-              ? 'Sign-in is not configured on this Mac.'
-              : 'Signed out',
-          )
-        }
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const json = (await res.json()) as DashboardPayload
-        if (controller.signal.aborted) return
-        setData(json)
-        setError(null)
-      } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') return
-        setError(err instanceof Error ? err.message : String(err))
-      } finally {
-        if (abortRef.current === controller) inFlightRef.current = false
-        if (!controller.signal.aborted) setLoading(false)
-      }
-    },
-    [range],
-  )
-
   useEffect(() => {
-    if (!user) return
     setLoading(true)
     void load({ mode: 'replace' })
     const id = window.setInterval(() => void load({ mode: 'poll' }), REFRESH_MS)
@@ -97,33 +57,7 @@ export default function App() {
       window.clearInterval(id)
       abortRef.current?.abort()
     }
-  }, [load, user])
-
-  async function logout() {
-    try {
-      await apiFetch('/api/auth/logout', { method: 'POST' })
-    } catch {
-      /* ignore */
-    }
-    clearAuthToken()
-    setUser(null)
-    setData(null)
-  }
-
-  if (!authChecked) {
-    return (
-      <div className="shell">
-        <p className="banner">Checking sign-in…</p>
-      </div>
-    )
-  }
-
-  if (!user) {
-    return <Login onSignedIn={setUser} />
-  }
-
-  const identity =
-    user.method === 'pin' ? 'PIN access' : user.email
+  }, [load])
 
   return (
     <div className="shell">
@@ -134,21 +68,17 @@ export default function App() {
         </div>
         <div className="top-right">
           <p className="stamp">
-            {identity}
             {data
-              ? ` · Updated ${new Date(data.generatedAt).toLocaleTimeString()}${
+              ? `Updated ${new Date(data.generatedAt).toLocaleTimeString()}${
                   data.cached ? ' · cached' : ''
                 }`
               : loading
-                ? ' · Loading…'
-                : ' · Offline'}
+                ? 'Loading…'
+                : 'Offline'}
           </p>
           <div className="top-actions">
             <button type="button" onClick={() => void load({ refresh: true })}>
               Refresh
-            </button>
-            <button type="button" onClick={() => void logout()}>
-              Sign out
             </button>
           </div>
         </div>
@@ -161,13 +91,9 @@ export default function App() {
         </p>
       ) : null}
 
-      {data && data.range === range ? (
+      {data ? (
         <main className="stack">
-          <AgentPanel
-            agents={data.agents}
-            range={range}
-            onRangeChange={setRange}
-          />
+          <AgentPanel agents={data.agents} />
           <SystemPanel system={data.system} />
           <GithubPanel github={data.github} />
         </main>
@@ -176,9 +102,8 @@ export default function App() {
       ) : null}
 
       <footer className="foot">
-        Runs only on this Mac. Agent % is relative share of local activity
-        scores for the selected date range (Cursor accepted lines / Claude &
-        Codex tokens or session volume).
+        Runs only on this Mac. Circles show each provider’s billing-cycle plan
+        usage (token / API allowance).
       </footer>
 
       <style>{`

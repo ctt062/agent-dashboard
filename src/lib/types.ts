@@ -1,4 +1,4 @@
-export const DATE_RANGES = ['1d', '7d', '30d', 'month'] as const
+export const DATE_RANGES = ['month'] as const
 export type DateRange = (typeof DATE_RANGES)[number]
 
 export type DailyPoint = {
@@ -22,12 +22,16 @@ export type UsageResetWindow = {
   label: string
   at: string | null
   usedPercent?: number
+  used?: number
+  limit?: number
+  unit?: string
   note?: string
 }
 
 export type UsageReset = {
   ok: boolean
   windows: UsageResetWindow[]
+  cycleStart?: string | null
   error?: string
 }
 
@@ -104,11 +108,8 @@ export function formatUptime(sec: number): string {
   return `${m}m`
 }
 
-export function rangeLabel(range: DateRange): string {
-  if (range === '1d') return 'Today'
-  if (range === '7d') return '7 days'
-  if (range === '30d') return '30 days'
-  return 'This month'
+export function rangeLabel(_range: DateRange = 'month'): string {
+  return 'This billing cycle'
 }
 
 export function formatResetAt(iso: string): string {

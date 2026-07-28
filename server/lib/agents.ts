@@ -40,12 +40,23 @@ function sumExtra(daily: DailyPoint[], key: string): number {
 
 /**
  * Period activity score for the filtered window.
- * Cursor: accepted AI lines only. Claude/Codex: tokens, else message/event volume.
+ * Cursor: accepted AI lines, else agent transcript/session volume.
+ * Claude/Codex: tokens, else message/event volume.
  */
 function computePeriodScore(agent: AgentUsage, daily: DailyPoint[]): number {
   if (agent.id === 'cursor') {
+    const accepted = sumExtra(daily, 'accepted')
+    if (accepted > 0) return accepted
     const sumPrimary = daily.reduce((s, d) => s + d.primary, 0)
-    return sumExtra(daily, 'accepted') || sumPrimary
+    if (sumPrimary > 0 && daily.some((d) => d.primaryLabel === 'accepted')) {
+      return sumPrimary
+    }
+    const agentMessages = sumExtra(daily, 'agentMessages')
+    const agentSessions = sumExtra(daily, 'agentSessions')
+    if (agentMessages > 0 || agentSessions > 0) {
+      return agentMessages * 50 + agentSessions * 100
+    }
+    return sumPrimary
   }
 
   const totalTokens = sumExtra(daily, 'tokens')
@@ -97,15 +108,18 @@ function periodMetrics(agent: AgentUsage, daily: DailyPoint[]): Record<string, n
   const base = { ...agent.metrics }
 
   if (agent.id === 'cursor') {
-    const sumPrimary = daily.reduce((s, d) => s + d.primary, 0)
-    const accepted = sumExtra(daily, 'accepted') || sumPrimary
+    const accepted = sumExtra(daily, 'accepted')
     const suggested = sumExtra(daily, 'suggested')
+    const agentMessages = sumExtra(daily, 'agentMessages')
+    const agentSessions = sumExtra(daily, 'agentSessions')
     return {
       ...base,
       acceptedLines: accepted,
       suggestedLines: suggested,
       acceptanceRate:
         suggested > 0 ? Math.round((accepted / suggested) * 1000) / 10 : 0,
+      agentMessages,
+      agentSessions,
       periodScore: score,
     }
   }
@@ -142,7 +156,12 @@ function periodMetrics(agent: AgentUsage, daily: DailyPoint[]): Record<string, n
 }
 
 /** Filter full-history agent data down to the selected date range and recompute score/stats. */
-export function applyRange(agent: AgentUsage, range: DateRange, since: string): AgentUsage {
+export function applyRange(
+  agent: AgentUsage,
+  range: DateRange,
+  since: string,
+  rangeDays?: number,
+): AgentUsage {
   if (!agent.available) {
     return {
       ...agent,
@@ -158,14 +177,17 @@ export function applyRange(agent: AgentUsage, range: DateRange, since: string): 
 
   const filtered = agent.daily.filter((d) => d.date >= since)
   const daily = normalizePeriodDaily(agent, filtered)
-  const stats = buildStats(daily, daysInRange(range))
+  const stats = buildStats(
+    daily,
+    rangeDays ?? daysInRange(range, new Date(), agent.usageReset?.cycleStart),
+  )
   const metrics = periodMetrics(agent, daily)
 
   const note =
     agent.note ??
     (!hasInRangeActivity(daily)
       ? `No activity in the selected ${
-          range === '1d' ? 'day' : range === 'month' ? 'month' : 'period'
+          range === 'month' ? 'billing cycle' : 'period'
         }.`
       : undefined)
 

@@ -90,29 +90,50 @@ export async function collectCursorUsageReset(): Promise<UsageReset> {
   const data = res.json as {
     billingCycleStart?: string | number
     billingCycleEnd?: string | number
-    planUsage?: { totalPercentUsed?: number; includedSpend?: number; limit?: number }
+    planUsage?: {
+      totalPercentUsed?: number
+      autoPercentUsed?: number
+      apiPercentUsed?: number
+      totalSpend?: number
+      includedSpend?: number
+      bonusSpend?: number
+      limit?: number
+    }
+    displayMessage?: string
   }
   const at = msOrSecToIso(data.billingCycleEnd)
   const start = msOrSecToIso(data.billingCycleStart)
-  const used = data.planUsage?.totalPercentUsed
+  const plan = data.planUsage
+  const used = plan?.totalPercentUsed
+  const auto =
+    typeof plan?.autoPercentUsed === 'number'
+      ? Math.round(plan.autoPercentUsed * 10) / 10
+      : null
+  const api =
+    typeof plan?.apiPercentUsed === 'number'
+      ? Math.round(plan.apiPercentUsed * 10) / 10
+      : null
   const windows: UsageResetWindow[] = [
     {
       label: 'Billing cycle',
       at,
       usedPercent:
         typeof used === 'number' ? Math.round(used * 10) / 10 : undefined,
-      note: start
-        ? `Cycle started ${new Date(start).toLocaleString(undefined, {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false,
-          })}`
-        : 'Monthly Cursor included usage',
+      unit: 'plan',
+      // Prefer Auto + API breakdown over Cursor's generic displayMessage,
+      // which can lag behind totalPercentUsed.
+      note:
+        auto != null || api != null
+          ? [
+              auto != null ? `Auto ${auto}%` : null,
+              api != null ? `API ${api}%` : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')
+          : undefined,
     },
   ]
-  return { ok: Boolean(at), windows }
+  return { ok: Boolean(at || start), windows, cycleStart: start }
 }
 
 type CodexAuthFile = {
@@ -213,6 +234,18 @@ function windowFromCodex(raw: unknown, fallbackLabel: string): UsageResetWindow 
   }
 }
 
+function codexCycleStartIso(window: UsageResetWindow, raw: unknown): string | null {
+  if (!window.at) return null
+  const w = raw && typeof raw === 'object'
+    ? (raw as { limit_window_seconds?: number })
+    : null
+  const secs = w?.limit_window_seconds
+  if (typeof secs !== 'number' || secs <= 0) return null
+  const end = Date.parse(window.at)
+  if (!Number.isFinite(end)) return null
+  return new Date(end - secs * 1000).toISOString()
+}
+
 export async function collectCodexUsageReset(): Promise<UsageReset> {
   let { access, refresh } = codexAccessToken()
   if (!access && refresh) {
@@ -258,11 +291,10 @@ export async function collectCodexUsageReset(): Promise<UsageReset> {
     }
   }
   const windows: UsageResetWindow[] = []
-  const primary = windowFromCodex(data.rate_limit?.primary_window, 'Primary')
-  const secondary = windowFromCodex(
-    data.rate_limit?.secondary_window,
-    'Secondary',
-  )
+  const primaryRaw = data.rate_limit?.primary_window
+  const secondaryRaw = data.rate_limit?.secondary_window
+  const primary = windowFromCodex(primaryRaw, 'Primary')
+  const secondary = windowFromCodex(secondaryRaw, 'Secondary')
   if (primary) windows.push(primary)
   if (secondary) windows.push(secondary)
   if (windows.length === 0) {
@@ -280,7 +312,12 @@ export async function collectCodexUsageReset(): Promise<UsageReset> {
         .join(' · '),
     }
   }
-  return { ok: true, windows }
+  const monthly =
+    windows.find((w) => /month|weekly|primary/i.test(w.label)) ?? windows[0]
+  const cycleStart =
+    codexCycleStartIso(monthly, primaryRaw) ??
+    (secondary ? codexCycleStartIso(secondary, secondaryRaw) : null)
+  return { ok: true, windows, cycleStart }
 }
 
 function claudeOAuthAccessToken(): string | null {
@@ -354,11 +391,32 @@ export async function collectClaudeUsageReset(): Promise<UsageReset> {
           })
         }
       }
-      if (windows.length > 0) return { ok: true, windows }
+      if (windows.length > 0) {
+        const weekly =
+          windows.find((w) => /week/i.test(w.label)) ?? windows[windows.length - 1]
+        let cycleStart: string | null = null
+        if (weekly.at) {
+          const end = Date.parse(weekly.at)
+          if (Number.isFinite(end)) {
+            // Claude weekly caps are rolling ~7 days.
+            cycleStart = new Date(end - 7 * 24 * 60 * 60 * 1000).toISOString()
+          }
+        }
+        if (!cycleStart) {
+          const d = new Date()
+          d.setDate(d.getDate() - 6)
+          d.setHours(0, 0, 0, 0)
+          cycleStart = d.toISOString()
+        }
+        return { ok: true, windows, cycleStart }
+      }
     }
   }
 
   // Claude Code Pro/Max limits are rolling windows; exact times live in `/usage`.
+  const fallbackStart = new Date()
+  fallbackStart.setDate(fallbackStart.getDate() - 6)
+  fallbackStart.setHours(0, 0, 0, 0)
   return {
     ok: true,
     windows: [
@@ -373,6 +431,7 @@ export async function collectClaudeUsageReset(): Promise<UsageReset> {
         note: 'Rolling 7-day cap · not calendar Monday',
       },
     ],
+    cycleStart: fallbackStart.toISOString(),
   }
 }
 

@@ -2,34 +2,31 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   DATE_RANGES,
+  billingCycleStartDate,
   daysInRange,
+  inclusiveDayCount,
   parseRange,
   rangeLabel,
   rangeStartDate,
 } from './range.ts'
 
-describe('date range helpers', () => {
-  it('includes This month alongside Today/7d/30d', () => {
-    assert.deepEqual(DATE_RANGES, ['1d', '7d', '30d', 'month'])
-    assert.equal(rangeLabel('1d'), 'Today')
-    assert.equal(rangeLabel('7d'), '7 days')
-    assert.equal(rangeLabel('30d'), '30 days')
-    assert.equal(rangeLabel('month'), 'This month')
+describe('billing cycle range', () => {
+  it('only supports this billing cycle', () => {
+    assert.deepEqual(DATE_RANGES, ['month'])
+    assert.equal(parseRange(undefined), 'month')
+    assert.equal(parseRange('7d'), 'month')
+    assert.equal(rangeLabel(), 'This billing cycle')
   })
 
-  it('parses month and rejects unknown values', () => {
-    assert.equal(parseRange('month'), 'month')
-    assert.equal(parseRange('7d'), '7d')
-    assert.equal(parseRange('nope'), '7d')
-    assert.equal(parseRange(undefined), '7d')
-  })
-
-  it('starts This month on the 1st of the local calendar month', () => {
+  it('uses provider cycleStart for the billing-cycle window', () => {
     const now = new Date(2026, 6, 28, 15, 30, 0) // Jul 28, 2026 local
-    assert.equal(rangeStartDate('month', now), '2026-07-01')
-    assert.equal(daysInRange('month', now), 28)
-    assert.equal(rangeStartDate('1d', now), '2026-07-28')
-    assert.equal(rangeStartDate('7d', now), '2026-07-22')
-    assert.equal(rangeStartDate('30d', now), '2026-06-29')
+    assert.equal(
+      billingCycleStartDate('2026-07-15T02:05:00.000Z', now),
+      '2026-07-15',
+    )
+    assert.equal(rangeStartDate('month', now, '2026-07-15T02:05:00.000Z'), '2026-07-15')
+    assert.equal(daysInRange('month', now, '2026-07-15T02:05:00.000Z'), 14)
+    assert.equal(inclusiveDayCount('2026-07-28', '2026-07-28'), 1)
+    assert.equal(rangeStartDate('month', now, null), '2026-07-01')
   })
 })
