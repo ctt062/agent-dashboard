@@ -3,6 +3,7 @@ import { AgentPanel } from './components/AgentPanel'
 import { GithubPanel } from './components/GithubPanel'
 import { Login } from './components/Login'
 import { SystemPanel } from './components/SystemPanel'
+import { apiFetch } from './lib/api'
 import type { DashboardPayload, DateRange } from './lib/types'
 
 const REFRESH_MS = 15_000
@@ -11,6 +12,7 @@ type AuthUser = {
   email: string
   name: string | null
   picture: string | null
+  method?: 'google' | 'pin'
 }
 
 export default function App() {
@@ -26,7 +28,7 @@ export default function App() {
   useEffect(() => {
     void (async () => {
       try {
-        const res = await fetch('/api/auth/me')
+        const res = await apiFetch('/api/auth/me')
         if (res.ok) {
           const json = (await res.json()) as { user: AuthUser }
           setUser(json.user)
@@ -57,7 +59,7 @@ export default function App() {
       try {
         const params = new URLSearchParams({ range })
         if (opts?.refresh) params.set('refresh', '1')
-        const res = await fetch(`/api/dashboard?${params}`, {
+        const res = await apiFetch(`/api/dashboard?${params}`, {
           signal: controller.signal,
         })
         if (res.status === 401 || res.status === 503) {
@@ -65,7 +67,7 @@ export default function App() {
           setData(null)
           throw new Error(
             res.status === 503
-              ? 'Google sign-in is not configured on this Mac.'
+              ? 'Sign-in is not configured on this Mac.'
               : 'Signed out',
           )
         }
@@ -98,7 +100,7 @@ export default function App() {
 
   async function logout() {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' })
+      await apiFetch('/api/auth/logout', { method: 'POST' })
     } catch {
       /* ignore */
     }
@@ -109,7 +111,7 @@ export default function App() {
   if (!authChecked) {
     return (
       <div className="shell">
-        <p className="banner">Checking Google sign-in…</p>
+        <p className="banner">Checking sign-in…</p>
       </div>
     )
   }
@@ -117,6 +119,9 @@ export default function App() {
   if (!user) {
     return <Login onSignedIn={setUser} />
   }
+
+  const identity =
+    user.method === 'pin' ? 'PIN access' : user.email
 
   return (
     <div className="shell">
@@ -127,7 +132,7 @@ export default function App() {
         </div>
         <div className="top-right">
           <p className="stamp">
-            {user.email}
+            {identity}
             {data
               ? ` · Updated ${new Date(data.generatedAt).toLocaleTimeString()}${
                   data.cached ? ' · cached' : ''

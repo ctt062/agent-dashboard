@@ -1,15 +1,22 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { apiFetch } from '../lib/api'
+
+type AuthMode = 'google' | 'pin'
 
 type AuthConfig = {
+  mode: AuthMode
   configured: boolean
   clientId: string | null
   allowedEmailsConfigured: boolean
+  publicOrigin?: string
+  pinConfigured?: boolean
 }
 
 type AuthUser = {
   email: string
   name: string | null
   picture: string | null
+  method?: 'google' | 'pin'
 }
 
 type Props = {
@@ -72,12 +79,13 @@ export function Login({ onSignedIn }: Props) {
   const [config, setConfig] = useState<AuthConfig | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [pin, setPin] = useState('')
   const buttonRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     void (async () => {
       try {
-        const res = await fetch('/api/auth/config')
+        const res = await apiFetch('/api/auth/config')
         const json = (await res.json()) as AuthConfig
         setConfig(json)
       } catch (err) {
@@ -87,7 +95,8 @@ export function Login({ onSignedIn }: Props) {
   }, [])
 
   useEffect(() => {
-    if (!config?.configured || !config.clientId || !buttonRef.current) return
+    if (config?.mode !== 'google') return
+    if (!config.configured || !config.clientId || !buttonRef.current) return
     let cancelled = false
 
     void (async () => {
@@ -101,7 +110,7 @@ export function Login({ onSignedIn }: Props) {
             setBusy(true)
             setError(null)
             try {
-              const res = await fetch('/api/auth/google', {
+              const res = await apiFetch('/api/auth/google', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ credential: response.credential }),
@@ -145,45 +154,117 @@ export function Login({ onSignedIn }: Props) {
     }
   }, [config, onSignedIn])
 
+  async function submitPin(event: FormEvent) {
+    event.preventDefault()
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await apiFetch('/api/auth/pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin }),
+      })
+      const json = (await res.json()) as {
+        user?: AuthUser
+        message?: string
+        error?: string
+      }
+      if (!res.ok || !json.user) {
+        throw new Error(json.message ?? json.error ?? `HTTP ${res.status}`)
+      }
+      onSignedIn(json.user)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const mode = config?.mode
+  const publicOrigin =
+    config?.publicOrigin ?? 'https://agent-dashboard-ctt.vercel.app'
+
   return (
     <div className="login-shell">
       <div className="login-card">
         <p className="eyebrow">Local Mac</p>
         <h1>Agent Deck</h1>
         <p className="login-copy">
-          Sign in with Google to open your private agent dashboard. Google must
-          verify your email before access is granted.
+          {mode === 'pin'
+            ? 'Enter the dashboard PIN to open Agent Deck on this LAN address. Google sign-in is not available on raw IP hosts.'
+            : 'Sign in with Google to open your private agent dashboard. Google must verify your email before access is granted.'}
         </p>
 
         {!config ? (
           <p className="login-status">Checking sign-in…</p>
         ) : !config.configured ? (
           <div className="login-setup">
-            <p>
-              Google sign-in is not configured yet. On this Mac:
-            </p>
-            <ol>
-              <li>
-                Create an OAuth <strong>Web client</strong> in Google Cloud
-                Console
-              </li>
-              <li>
-                Add authorized JavaScript origins:{' '}
-                <code>http://127.0.0.1:3847</code> (and your LAN URL if using
-                phone)
-              </li>
-              <li>
-                Copy <code>.env.example</code> to <code>.env</code> and set{' '}
-                <code>GOOGLE_CLIENT_ID</code>
-              </li>
-              <li>
-                Optional: set <code>ALLOWED_EMAILS=you@gmail.com</code>
-              </li>
-              <li>
-                Restart with <code>npm run setup</code>
-              </li>
-            </ol>
+            {mode === 'pin' ? (
+              <>
+                <p>PIN sign-in is not configured yet. On this Mac:</p>
+                <ol>
+                  <li>
+                    Copy <code>.env.example</code> to <code>.env</code>
+                  </li>
+                  <li>
+                    Set <code>DASHBOARD_PIN</code> (required for LAN / phone)
+                  </li>
+                  <li>
+                    When <code>HOST=0.0.0.0</code>, also set{' '}
+                    <code>ALLOWED_EMAILS</code> and <code>GOOGLE_CLIENT_ID</code>
+                  </li>
+                  <li>
+                    Restart with <code>npm run setup</code>
+                  </li>
+                </ol>
+              </>
+            ) : (
+              <>
+                <p>Google sign-in is not configured yet. On this Mac:</p>
+                <ol>
+                  <li>
+                    Create an OAuth <strong>Web client</strong> in Google Cloud
+                    Console
+                  </li>
+                  <li>
+                    Add authorized JavaScript origins:{' '}
+                    <code>http://127.0.0.1:3847</code> and{' '}
+                    <code>{publicOrigin}</code>
+                  </li>
+                  <li>
+                    Copy <code>.env.example</code> to <code>.env</code> and set{' '}
+                    <code>GOOGLE_CLIENT_ID</code>
+                  </li>
+                  <li>
+                    For LAN bind, set <code>ALLOWED_EMAILS</code> and{' '}
+                    <code>DASHBOARD_PIN</code>
+                  </li>
+                  <li>
+                    Restart with <code>npm run setup</code>
+                  </li>
+                </ol>
+              </>
+            )}
           </div>
+        ) : mode === 'pin' ? (
+          <form className="pin-form" onSubmit={(e) => void submitPin(e)}>
+            <label className="pin-label" htmlFor="dashboard-pin">
+              Dashboard PIN
+            </label>
+            <input
+              id="dashboard-pin"
+              className="pin-input"
+              type="password"
+              inputMode="numeric"
+              autoComplete="current-password"
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              disabled={busy}
+            />
+            <button type="submit" className="pin-submit" disabled={busy || !pin}>
+              {busy ? 'Checking…' : 'Unlock'}
+            </button>
+          </form>
         ) : (
           <>
             <div ref={buttonRef} className="google-btn" />
@@ -250,6 +331,38 @@ export function Login({ onSignedIn }: Props) {
           display: flex;
           flex-direction: column;
           gap: 0.4rem;
+        }
+        .pin-form {
+          display: flex;
+          flex-direction: column;
+          gap: 0.55rem;
+        }
+        .pin-label {
+          font-size: 0.72rem;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: var(--muted);
+        }
+        .pin-input {
+          border: 1px solid var(--line);
+          background: var(--bg);
+          color: var(--text);
+          padding: 0.7rem 0.75rem;
+          font: inherit;
+          font-size: 1rem;
+        }
+        .pin-submit {
+          border: 1px solid var(--line);
+          background: var(--text);
+          color: var(--bg);
+          padding: 0.7rem 0.9rem;
+          font: inherit;
+          font-size: 0.85rem;
+          cursor: pointer;
+        }
+        .pin-submit:disabled {
+          opacity: 0.5;
+          cursor: default;
         }
         code {
           font-family: inherit;

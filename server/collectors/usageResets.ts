@@ -145,26 +145,25 @@ async function refreshCodexAccessToken(
   }
   if (!data.access_token) return null
 
-  // Persist refreshed tokens so subsequent polls stay authenticated.
+  // Fail closed: rotated refresh tokens must land on disk or Codex CLI breaks.
+  if (!existsSync(CODEX_AUTH)) return null
   try {
-    if (existsSync(CODEX_AUTH)) {
-      const raw = JSON.parse(readFileSync(CODEX_AUTH, 'utf8')) as CodexAuthFile
-      raw.tokens = {
-        ...raw.tokens,
-        access_token: data.access_token,
-        refresh_token: data.refresh_token ?? raw.tokens?.refresh_token,
-        id_token: data.id_token ?? raw.tokens?.id_token,
-      }
-      raw.last_refresh = new Date().toISOString()
-      const tmp = join(dirname(CODEX_AUTH), `.auth.json.${process.pid}.tmp`)
-      writeFileSync(tmp, `${JSON.stringify(raw, null, 2)}\n`, {
-        encoding: 'utf8',
-        mode: 0o600,
-      })
-      renameSync(tmp, CODEX_AUTH)
+    const raw = JSON.parse(readFileSync(CODEX_AUTH, 'utf8')) as CodexAuthFile
+    raw.tokens = {
+      ...raw.tokens,
+      access_token: data.access_token,
+      refresh_token: data.refresh_token ?? raw.tokens?.refresh_token,
+      id_token: data.id_token ?? raw.tokens?.id_token,
     }
+    raw.last_refresh = new Date().toISOString()
+    const tmp = join(dirname(CODEX_AUTH), `.auth.json.${process.pid}.tmp`)
+    writeFileSync(tmp, `${JSON.stringify(raw, null, 2)}\n`, {
+      encoding: 'utf8',
+      mode: 0o600,
+    })
+    renameSync(tmp, CODEX_AUTH)
   } catch {
-    /* ignore persist failures */
+    return null
   }
   return data.access_token
 }

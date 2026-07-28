@@ -38,12 +38,19 @@ describe('LAN phone webapp intent', () => {
     assert.match(html, /viewport-fit=cover/)
   })
 
-  it('documents why Vercel is the wrong host and how to use LAN instead', () => {
+  it('documents Mac API + optional Vercel static UI and LAN PIN access', () => {
     const readme = readFileSync(join(root, 'README.md'), 'utf8')
-    assert.match(readme, /Why localhost \(not Vercel \/ public web\)/)
-    assert.match(readme, /Do not deploy this app to Vercel/)
+    assert.match(readme, /Why the Mac still runs the API/)
+    assert.match(readme, /do not deploy the collectors to a public cloud/i)
+    assert.match(readme, /agent-dashboard-ctt\.vercel\.app/)
+    assert.match(readme, /DASHBOARD_PIN/)
     assert.match(readme, /npm run serve:lan/)
     assert.match(readme, /npm run dev:lan/)
     assert.match(readme, /Add to Home Screen/)
+    assert.match(readme, /Google GIS does \*\*not\*\* accept raw LAN IPs/)
+    assert.doesNotMatch(
+      readme,
+      /Authorized JavaScript origins[\s\S]{0,400}192\.168/,
+    )
   })
 })

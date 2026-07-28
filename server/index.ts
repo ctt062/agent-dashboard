@@ -5,9 +5,14 @@ import { networkInterfaces } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
+  assertLanAuthRequirements,
+  attachCors,
   attachSession,
   authConfigured,
+  dashboardPin,
+  googleAuthReady,
   mountAuthRoutes,
+  publicOrigin,
   requireAuth,
 } from './auth.js'
 import { collectClaude } from './collectors/claude.js'
@@ -27,6 +32,8 @@ const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MS ?? 10_000)
 const USAGE_RESETS_TTL_MS = Number(process.env.USAGE_RESETS_TTL_MS ?? 180_000)
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const DIST = join(__dirname, '../dist')
+
+assertLanAuthRequirements(HOST)
 
 type UsageResetsPayload = {
   cursor: UsageReset
@@ -52,8 +59,12 @@ function lanUrls(port: number): string[] {
   return out
 }
 
-async function getUsageResets(): Promise<UsageResetsPayload> {
+async function getUsageResets(force = false): Promise<UsageResetsPayload> {
+  if (force) {
+    usageResetsCache = null
+  }
   if (
+    !force &&
     usageResetsCache &&
     Date.now() - usageResetsCache.at < USAGE_RESETS_TTL_MS
   ) {
@@ -76,23 +87,31 @@ async function collectRaw(force = false): Promise<{ data: RawCollectors; cached:
   if (!force && cache && Date.now() - cache.at < CACHE_TTL_MS) {
     return { data: cache.data, cached: true }
   }
+
+  const execute = async (): Promise<RawCollectors> => {
+    const [cursor, claude, codex, system, github, resets] = await Promise.all([
+      Promise.resolve().then(() => collectCursor()),
+      collectClaude(),
+      collectCodex(),
+      Promise.resolve().then(() => collectSystem()),
+      Promise.resolve().then(() => collectGithub()),
+      getUsageResets(force),
+    ])
+    cursor.usageReset = resets.cursor
+    claude.usageReset = resets.claude
+    codex.usageReset = resets.codex
+    const data: RawCollectors = { cursor, claude, codex, system, github }
+    cache = { at: Date.now(), data }
+    return data
+  }
+
+  if (force) {
+    const data = await execute()
+    return { data, cached: false }
+  }
+
   if (!inflight) {
-    inflight = (async () => {
-      const [cursor, claude, codex, system, github, resets] = await Promise.all([
-        Promise.resolve().then(() => collectCursor()),
-        collectClaude(),
-        collectCodex(),
-        Promise.resolve().then(() => collectSystem()),
-        Promise.resolve().then(() => collectGithub()),
-        getUsageResets(),
-      ])
-      cursor.usageReset = resets.cursor
-      claude.usageReset = resets.claude
-      codex.usageReset = resets.codex
-      const data: RawCollectors = { cursor, claude, codex, system, github }
-      cache = { at: Date.now(), data }
-      return data
-    })().finally(() => {
+    inflight = execute().finally(() => {
       inflight = null
     })
   }
@@ -124,6 +143,7 @@ async function buildPayload(
 
 const app = express()
 app.use(express.json({ limit: '32kb' }))
+attachCors(app)
 attachSession(app)
 mountAuthRoutes(app)
 
@@ -133,6 +153,9 @@ app.get('/api/health', (_req, res) => {
     dist: existsSync(DIST),
     host: HOST,
     authConfigured: authConfigured(),
+    googleAuthReady: googleAuthReady(),
+    pinAuthReady: Boolean(dashboardPin()),
+    publicOrigin: publicOrigin(),
     cacheTtlMs: CACHE_TTL_MS,
     usageResetsTtlMs: USAGE_RESETS_TTL_MS,
   })
@@ -166,18 +189,24 @@ app.listen(PORT, HOST, () => {
   const servingUi = existsSync(DIST)
   const mode = servingUi ? 'API + UI' : 'API only'
   console.log(`agent-dashboard ${mode} on http://${HOST === '0.0.0.0' ? '127.0.0.1' : HOST}:${PORT}`)
-  if (!authConfigured()) {
+  console.log(`Public UI origin (Google): ${publicOrigin()}`)
+  if (!googleAuthReady()) {
     console.log(
       'Auth: GOOGLE_CLIENT_ID is not set. Copy .env.example to .env and add a Google OAuth Web client ID.',
     )
   } else {
-    console.log('Auth: Google sign-in is required before the dashboard loads.')
+    console.log('Auth: Google sign-in on localhost and PUBLIC_ORIGIN.')
+  }
+  if (dashboardPin()) {
+    console.log('Auth: PIN sign-in enabled for LAN / non-Google hosts.')
+  } else {
+    console.log('Auth: DASHBOARD_PIN is not set (required for phone/LAN IP access).')
   }
   if (HOST === '0.0.0.0' || HOST === '::') {
     const urls = lanUrls(PORT)
     if (urls.length > 0) {
       if (servingUi) {
-        console.log('Phone / LAN (same Wi-Fi):')
+        console.log('Phone / LAN (same Wi-Fi, PIN sign-in):')
         for (const url of urls) console.log(`  ${url}`)
       } else {
         console.log('API only (LAN, same Wi-Fi):')

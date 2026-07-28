@@ -33,6 +33,20 @@ NODE_DIR="$(dirname "$NODE_BIN")"
 NPM_DIR="$(dirname "$NPM_BIN")"
 LAUNCH_PATH="${NODE_DIR}:${NPM_DIR}:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"
 
+strip_env_quotes() {
+  local val="$1"
+  if [[ "${#val}" -ge 2 ]]; then
+    local first="${val:0:1}"
+    local last="${val: -1}"
+    if [[ "$first" == '"' && "$last" == '"' ]]; then
+      val="${val:1:${#val}-2}"
+    elif [[ "$first" == "'" && "$last" == "'" ]]; then
+      val="${val:1:${#val}-2}"
+    fi
+  fi
+  printf '%s' "$val"
+}
+
 # Default: LAN-capable so phone can open the same always-on server.
 HOST_VALUE="${HOST:-0.0.0.0}"
 PORT_VALUE="${PORT:-3847}"
@@ -44,12 +58,25 @@ if [[ -f "$ENV_FILE" ]]; then
     [[ "$line" =~ ^[[:space:]]*# ]] && continue
     [[ -z "${line// }" ]] && continue
     if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
-      export "${BASH_REMATCH[1]}=${BASH_REMATCH[2]}"
+      key="${BASH_REMATCH[1]}"
+      val="$(strip_env_quotes "${BASH_REMATCH[2]}")"
+      export "${key}=${val}"
     fi
   done <"$ENV_FILE"
   set +a
   HOST_VALUE="${HOST:-$HOST_VALUE}"
   PORT_VALUE="${PORT:-$PORT_VALUE}"
+fi
+
+if [[ "$HOST_VALUE" == "0.0.0.0" || "$HOST_VALUE" == "::" ]]; then
+  missing=()
+  [[ -z "${GOOGLE_CLIENT_ID:-}" ]] && missing+=("GOOGLE_CLIENT_ID")
+  [[ -z "${ALLOWED_EMAILS:-}" ]] && missing+=("ALLOWED_EMAILS")
+  [[ -z "${DASHBOARD_PIN:-}" ]] && missing+=("DASHBOARD_PIN")
+  if [[ "${#missing[@]}" -gt 0 ]]; then
+    echo "LAN bind (HOST=${HOST_VALUE}) requires ${missing[*]} in ${ENV_FILE}." >&2
+    exit 1
+  fi
 fi
 
 # Build EnvironmentVariables dict entries from .env (safe subset)
@@ -62,6 +89,12 @@ if [[ -n "${GOOGLE_CLIENT_ID:-}" ]]; then
 fi
 if [[ -n "${ALLOWED_EMAILS:-}" ]]; then
   ENV_XML+="    <key>ALLOWED_EMAILS</key>\n    <string>${ALLOWED_EMAILS}</string>\n"
+fi
+if [[ -n "${DASHBOARD_PIN:-}" ]]; then
+  ENV_XML+="    <key>DASHBOARD_PIN</key>\n    <string>${DASHBOARD_PIN}</string>\n"
+fi
+if [[ -n "${PUBLIC_ORIGIN:-}" ]]; then
+  ENV_XML+="    <key>PUBLIC_ORIGIN</key>\n    <string>${PUBLIC_ORIGIN}</string>\n"
 fi
 if [[ -n "${SESSION_SECRET:-}" ]]; then
   ENV_XML+="    <key>SESSION_SECRET</key>\n    <string>${SESSION_SECRET}</string>\n"
@@ -109,7 +142,7 @@ echo "Installed ${PLIST}"
 echo "Agent Deck starts automatically at login."
 echo "Open http://127.0.0.1:${PORT_VALUE} (sign in with Google)."
 if [[ "$HOST_VALUE" == "0.0.0.0" || "$HOST_VALUE" == "::" ]]; then
-  echo "LAN/phone: same Wi-Fi devices can use this Mac's IP on port ${PORT_VALUE}."
+  echo "LAN/phone: same Wi-Fi devices use this Mac's IP on port ${PORT_VALUE} with PIN sign-in."
 fi
 if [[ -z "${GOOGLE_CLIENT_ID:-}" ]]; then
   echo "Warning: GOOGLE_CLIENT_ID is not set. Add it to ${ENV_FILE} then re-run npm run setup."
