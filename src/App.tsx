@@ -3,6 +3,12 @@ import { AgentPanel } from './components/AgentPanel'
 import { GithubPanel } from './components/GithubPanel'
 import { SystemPanel } from './components/SystemPanel'
 import { apiFetch, readApiJson } from './lib/api'
+import {
+  applyTheme,
+  persistTheme,
+  resolveTheme,
+  type Theme,
+} from './lib/theme'
 import type { DashboardPayload } from './lib/types'
 
 const REFRESH_MS = 15_000
@@ -11,8 +17,14 @@ export default function App() {
   const [data, setData] = useState<DashboardPayload | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [theme, setTheme] = useState<Theme>(() => resolveTheme())
   const abortRef = useRef<AbortController | null>(null)
   const inFlightRef = useRef(false)
+
+  useEffect(() => {
+    applyTheme(theme)
+    persistTheme(theme)
+  }, [theme])
 
   const load = useCallback(async (opts?: {
     refresh?: boolean
@@ -77,6 +89,17 @@ export default function App() {
                 : 'Offline'}
           </p>
           <div className="top-actions">
+            <button
+              type="button"
+              className="theme-toggle"
+              aria-label={
+                theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'
+              }
+              title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+              onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+            >
+              {theme === 'dark' ? 'Light' : 'Dark'}
+            </button>
             <button type="button" onClick={() => void load({ refresh: true })}>
               Refresh
             </button>
@@ -93,9 +116,9 @@ export default function App() {
 
       {data ? (
         <main className="stack">
-          <AgentPanel agents={data.agents} />
+          <AgentPanel agents={data.agents} theme={theme} />
           <SystemPanel system={data.system} />
-          <GithubPanel github={data.github} />
+          <GithubPanel github={data.github} theme={theme} />
         </main>
       ) : !error ? (
         <p className="banner">Reading local agent + Mac metrics…</p>

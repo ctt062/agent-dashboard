@@ -1,4 +1,5 @@
-:root {
+:root,
+[data-theme='dark'] {
   color-scheme: dark;
   --bg: #050505;
   --panel: #0c0c0c;
@@ -11,6 +12,38 @@
   --claude: #3ecf8e;
   --codex: #f0b429;
   --ok: #bdbdbd;
+  --card-bg: #080808;
+  --card-glow: #121212;
+  --chart-fill-top: #1a1a1a;
+  --chart-fill-bottom: #080808;
+  --marker-stroke: #050505;
+  --heat-empty: #141414;
+  --heat-invert: 0;
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+  --bg: #eef0f2;
+  --panel: #ffffff;
+  --line: #d4d8de;
+  --text: #17181c;
+  --muted: #5f6570;
+  --dim: #9aa1ab;
+  --accent: #2a2e36;
+  --cursor: #17181c;
+  --claude: #1f8a5b;
+  --codex: #9a6b00;
+  --ok: #4a505a;
+  --card-bg: #ffffff;
+  --card-glow: #e6e9ee;
+  --chart-fill-top: #e6e9ee;
+  --chart-fill-bottom: #ffffff;
+  --marker-stroke: #ffffff;
+  --heat-empty: #e4e7ec;
+  --heat-invert: 1;
+}
+
+:root {
   font-family: 'IBM Plex Mono', ui-monospace, monospace;
   line-height: 1.45;
   font-weight: 400;

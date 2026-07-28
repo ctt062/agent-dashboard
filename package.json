@@ -35,7 +35,7 @@
     "serve": "npm run build && npm start",
     "preview": "vite preview",
     "lint": "oxlint",
-    "test": "node --test server/lib/range.test.ts server/lib/localhost-intent.test.ts server/lib/localhost.test.ts server/lib/cursor-stamp.test.ts src/lib/types.test.ts src/lib/api.test.ts src/lib/cumulativeUsage.test.ts",
+    "test": "node --test server/lib/range.test.ts server/lib/localhost-intent.test.ts server/lib/localhost.test.ts server/lib/cursor-stamp.test.ts src/lib/types.test.ts src/lib/api.test.ts src/lib/cumulativeUsage.test.ts src/lib/theme.test.ts",
     "setup": "npm run build && npm run launchagent:install",
     "launchagent:install": "bash scripts/install-launchagent.sh",
     "launchagent:uninstall": "bash scripts/uninstall-launchagent.sh"

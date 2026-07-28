@@ -2,26 +2,15 @@
 
 ![Agent Deck screenshot](./docs/Screenshot.png)
 
-Local macOS dashboard for AI agent usage (Cursor, Claude Code, Codex), Mac resource meters, and your GitHub contribution calendar.
+A local macOS dashboard for your AI coding agents.
 
-Runs entirely on your machine at **http://127.0.0.1:3847**. No cloud host and no sign-in - open the URL and the dashboard loads.
+See **this billing cycle’s plan usage** for Cursor, Claude Code, and Codex as circular meters, plus a cumulative usage chart. Also shows Mac CPU / memory / GPU and your GitHub contribution heatmap.
 
-Usage-reset lookups send your local Cursor, Codex, and Claude auth tokens from this Mac only to those vendors' usage APIs (api2.cursor.sh, auth.openai.com / chatgpt.com, api.anthropic.com) - not to Agent Deck or any other service.
+Runs only on your machine at **http://127.0.0.1:3847**. No cloud host and no sign-in - open the URL and the dashboard loads. This app is **localhost-only**.
 
 ![Agent Deck](https://img.shields.io/badge/platform-macOS-black) ![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue)
 
-## Why localhost
-
-Your machine is the source of truth:
-
-- **Cursor** stats live in a local SQLite DB
-- **Claude Code** / **Codex** sessions are local JSONL logs
-- **CPU / GPU / Memory** only exist on this Mac
-- **GitHub** calendar is fetched with your local `gh` auth
-
-Collectors must stay on this Mac. This app is **localhost-only**.
-
-## Recommended setup
+## Quick start
 
 ```bash
 git clone https://github.com/ctt062/agent-dashboard.git
@@ -32,34 +21,31 @@ npm run setup
 
 That builds the UI, installs a macOS LaunchAgent so Agent Deck starts at login, and opens **http://127.0.0.1:3847**.
 
-`npm run dev` is optional (hot reload for coding).
-
-## Download
-
 ### ZIP (no Git)
 
 1. Open https://github.com/ctt062/agent-dashboard
 2. Click **Code → Download ZIP**
-3. Unzip, then `npm install` and `npm run setup`.
+3. Unzip, then run `npm install` and `npm run setup`
 
-### One-command production serve
+### Useful commands
 
-```bash
-npm run serve
-```
+| Command | What it does |
+|---------|----------------|
+| `npm run setup` | Build + install LaunchAgent (recommended) |
+| `npm run serve` | Build and serve once at **http://127.0.0.1:3847** |
+| `npm run dev` | Hot-reload API + UI (dev UI at **http://127.0.0.1:5174**) |
+| `npm run launchagent:uninstall` | Remove the login auto-start agent |
 
-Open **http://127.0.0.1:3847**.
+## What you get
 
-`npm start` alone also works after `npm run build`. Hot-reload coding: `npm run dev` → **http://127.0.0.1:5174**.
+- **Billing-cycle plan meters** - one circle per agent with used % in the center
+- **Cumulative usage chart** - three lines from Cursor’s billing-cycle start to now
+- **Light / dark mode** - toggle next to Refresh; preference is saved locally
+- **Mac meters** - CPU, memory, and GPU utilization
+- **GitHub heatmap** - last year of contributions via local `gh` auth
+- **Auto-start at login** via LaunchAgent
 
-## Start at login (macOS)
-
-```bash
-npm run setup
-```
-
-LaunchAgent only: `npm run launchagent:install`  
-Remove: `npm run launchagent:uninstall`
+Missing collectors degrade gracefully. Each panel shows a short hint instead of crashing.
 
 ## Requirements
 
@@ -71,36 +57,29 @@ Remove: `npm run launchagent:uninstall`
   - Claude Code logs under `~/.claude/projects/`
   - Codex sessions under `~/.codex/sessions/`
 
-Missing collectors degrade gracefully - each panel shows a short hint instead of crashing.
+## How plan % works
 
-## Features
+The big circle for each agent is **vendor plan usage for this billing cycle** when the provider exposes it (for example Cursor’s included Auto / API usage).
 
-- **Billing cycle view**: Plan usage % / limits plus relative agent activity for each provider’s current billing window
-- **Usage resets**: Per-provider token/limit reset times
-- **Detailed agent stats**: period total, avg/day, active days, peak day, acceptance rate (Cursor), input/output tokens
-- **Dual-series charts** plus a cross-agent comparison chart
-- **Auto-start** at login via `npm run setup`
-- **Cached collectors** (~10s TTL) with parallel collection; usage-reset lookups cache separately (~3 min)
+The shared chart X-axis follows **Cursor’s billing-cycle start → now**, so Claude’s rolling weekly window does not pull the timeline backward.
 
-## Stack
+Daily activity under the chart is built from local logs on this Mac:
 
-- Vite + React + TypeScript UI
-- Express API on port `3847` (also serves `dist/` after build)
-- Collectors read local files / `top` / `ioreg` / `gh api`
-
-## What the percentages mean
-
-Agent % is **relative share** of a local activity score across Cursor, Claude Code, and Codex for the selected date range - not a vendor billing percentage.
-
-| Agent | Primary signal |
+| Agent | Local signal |
 |-------|----------------|
-| Cursor | Accepted AI lines when present; otherwise Agent transcript / ACP session volume |
+| Cursor | Agent transcripts / ACP sessions (and legacy accepted-line stats when present) |
 | Claude Code | Tokens from `~/.claude/projects/**/*.jsonl`, else message volume |
 | Codex | Tokens from `~/.codex/sessions/**/*.jsonl`, else event volume |
 
+## Privacy
+
+- Dashboard stats come from files and tools already on your Mac
+- Bound to **127.0.0.1 only** - not exposed on your LAN or the public internet
+- Usage-reset / plan lookups use local Cursor, Codex, and Claude credentials on this machine only to call those vendors’ usage APIs (`api2.cursor.sh`, `auth.openai.com` / `chatgpt.com`, `api.anthropic.com`) - not Agent Deck or any other service
+
 ## API
 
-Bind is `127.0.0.1` only. Non-loopback `HOST` values are rejected.
+Bind is `127.0.0.1` only. Non-loopback `HOST` values are rejected at startup.
 
 | Endpoint | Description |
 |----------|-------------|
@@ -108,11 +87,11 @@ Bind is `127.0.0.1` only. Non-loopback `HOST` values are rejected.
 | `GET /api/system` | Mac snapshot only. |
 | `GET /api/health` | Liveness check. |
 
-## Privacy
+## Stack
 
-- Dashboard stats come from files and tools already on your Mac
-- Bound to localhost only - not exposed on your LAN or the public internet
-- Usage-reset times use local Cursor / Codex / Claude credentials on this machine only to call those vendors' usage APIs
+- Vite + React + TypeScript UI
+- Express API on port `3847` (also serves `dist/` after build)
+- Collectors read local files / `top` / `ioreg` / `gh api`
 
 ## License
 

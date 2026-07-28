@@ -1,19 +1,27 @@
 import { useMemo } from 'react'
+import type { Theme } from '../lib/theme'
 import type { GithubSnapshot } from '../lib/types'
 
 type Props = {
   github: GithubSnapshot
+  theme: Theme
 }
 
-/** Remap GitHub greens to grayscale for the black theme. */
-function grayLevel(count: number, max: number): string {
-  if (count <= 0) return '#141414'
+/** Remap GitHub greens to grayscale that follows the active theme. */
+function grayLevel(count: number, max: number, theme: Theme): string {
+  if (count <= 0) {
+    return theme === 'light' ? '#e4e7ec' : '#141414'
+  }
   const t = Math.min(1, count / Math.max(max, 1))
+  if (theme === 'light') {
+    const v = Math.round(210 - t * 165)
+    return `rgb(${v},${v},${v})`
+  }
   const v = Math.round(40 + t * 180)
   return `rgb(${v},${v},${v})`
 }
 
-export function GithubPanel({ github }: Props) {
+export function GithubPanel({ github, theme }: Props) {
   const max = useMemo(
     () => Math.max(1, ...github.days.map((d) => d.count)),
     [github.days],
@@ -46,7 +54,7 @@ export function GithubPanel({ github }: Props) {
                   key={day.date}
                   className="cell"
                   title={`${day.date}: ${day.count}`}
-                  style={{ background: grayLevel(day.count, max) }}
+                  style={{ background: grayLevel(day.count, max, theme) }}
                 />
               ))}
             </div>
@@ -83,7 +91,7 @@ export function GithubPanel({ github }: Props) {
         .week { display: flex; flex-direction: column; gap: 3px; }
         .cell {
           width: 11px; height: 11px; display: block;
-          border: 1px solid #101010;
+          border: 1px solid var(--line);
         }
         .err-box { display: flex; flex-direction: column; gap: 0.45rem; }
         .err { margin: 0; color: var(--muted); font-size: 0.8rem; }

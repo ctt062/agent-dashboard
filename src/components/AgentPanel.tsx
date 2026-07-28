@@ -3,6 +3,7 @@ import {
   buildCumulativeChart,
   type CumulativeSeriesPoint,
 } from '../lib/cumulativeUsage'
+import type { Theme } from '../lib/theme'
 import {
   formatResetAt,
   type AgentShare,
@@ -11,6 +12,7 @@ import {
 
 type Props = {
   agents: AgentShare[]
+  theme: Theme
 }
 
 function primaryUsageWindow(agent: AgentShare): UsageResetWindow | null {
@@ -89,14 +91,14 @@ const LINE_META: Array<{
   {
     id: 'cursor',
     label: 'Cursor',
-    color: '#f4f4f4',
+    color: 'var(--cursor)',
     width: 2.75,
     marker: 'circle',
   },
   {
     id: 'claude',
     label: 'Claude',
-    color: '#3ecf8e',
+    color: 'var(--claude)',
     dash: '7 5',
     width: 2.5,
     marker: 'square',
@@ -104,7 +106,7 @@ const LINE_META: Array<{
   {
     id: 'codex',
     label: 'Codex',
-    color: '#f0b429',
+    color: 'var(--codex)',
     dash: '2 5',
     width: 2.5,
     marker: 'diamond',
@@ -112,9 +114,9 @@ const LINE_META: Array<{
 ]
 
 const RING_COLOR: Record<AgentShare['id'], string> = {
-  cursor: '#f4f4f4',
-  claude: '#3ecf8e',
-  codex: '#f0b429',
+  cursor: 'var(--cursor)',
+  claude: 'var(--claude)',
+  codex: 'var(--codex)',
 }
 
 function linePath(
@@ -150,7 +152,7 @@ function Marker({
   color: string
 }) {
   if (kind === 'circle') {
-    return <circle cx={x} cy={y} r={3.4} fill={color} stroke="#050505" strokeWidth={1} />
+    return <circle cx={x} cy={y} r={3.4} fill={color} stroke="var(--marker-stroke)" strokeWidth={1} />
   }
   if (kind === 'square') {
     return (
@@ -160,7 +162,7 @@ function Marker({
         width={6.4}
         height={6.4}
         fill={color}
-        stroke="#050505"
+        stroke="var(--marker-stroke)"
         strokeWidth={1}
       />
     )
@@ -170,7 +172,7 @@ function Marker({
     <polygon
       points={`${x},${y - s} ${x + s},${y} ${x},${y + s} ${x - s},${y}`}
       fill={color}
-      stroke="#050505"
+      stroke="var(--marker-stroke)"
       strokeWidth={1}
     />
   )
@@ -297,8 +299,8 @@ function CumulativeUsageChart({ agents }: { agents: AgentShare[] }) {
       >
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#1a1a1a" stopOpacity="0.9" />
-            <stop offset="100%" stopColor="#080808" stopOpacity="0" />
+            <stop offset="0%" stopColor="var(--chart-fill-top)" stopOpacity="0.9" />
+            <stop offset="100%" stopColor="var(--chart-fill-bottom)" stopOpacity="0" />
           </linearGradient>
         </defs>
         <rect
@@ -386,9 +388,9 @@ function CumulativeUsageChart({ agents }: { agents: AgentShare[] }) {
   )
 }
 
-export function AgentPanel({ agents }: Props) {
+export function AgentPanel({ agents, theme }: Props) {
   return (
-    <section className="panel">
+    <section className="panel" data-theme-sync={theme}>
       <header className="panel-head">
         <div>
           <h2>This billing cycle</h2>
@@ -425,7 +427,7 @@ export function AgentPanel({ agents }: Props) {
         })}
       </div>
 
-      <CumulativeUsageChart agents={agents} />
+      <CumulativeUsageChart key={theme} agents={agents} />
 
       <style>{`
         .panel {
@@ -455,8 +457,8 @@ export function AgentPanel({ agents }: Props) {
           border: 1px solid var(--line);
           border-top: 2px solid var(--agent, var(--line));
           background:
-            radial-gradient(ellipse at top, #121212 0%, transparent 60%),
-            #080808;
+            radial-gradient(ellipse at top, var(--card-glow) 0%, transparent 60%),
+            var(--card-bg);
           padding: 1.25rem 1rem 1.2rem;
           display: flex;
           flex-direction: column;
@@ -465,9 +467,9 @@ export function AgentPanel({ agents }: Props) {
           text-align: center;
           min-height: 18rem;
         }
-        .usage-card.agent-cursor { --agent: #f4f4f4; }
-        .usage-card.agent-claude { --agent: #3ecf8e; }
-        .usage-card.agent-codex { --agent: #f0b429; }
+        .usage-card.agent-cursor { --agent: var(--cursor); }
+        .usage-card.agent-claude { --agent: var(--claude); }
+        .usage-card.agent-codex { --agent: var(--codex); }
         .usage-card.muted { opacity: 0.78; }
         .usage-card h3 {
           margin: 0;
@@ -539,7 +541,7 @@ export function AgentPanel({ agents }: Props) {
         }
         .cum {
           border: 1px solid var(--line);
-          background: #080808;
+          background: var(--card-bg);
           padding: 1rem 1rem 0.75rem;
           display: flex;
           flex-direction: column;
