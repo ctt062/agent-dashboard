@@ -1,11 +1,12 @@
-import type { AgentShare, UsageResetWindow } from './types'
+import { AGENT_IDS, type AgentId } from './harness.ts'
+import type { AgentShare, UsageResetWindow } from './types.ts'
+
+export type { AgentId } from './harness.ts'
+export { AGENT_IDS } from './harness.ts'
 
 export type CumulativeSeriesPoint = {
   date: string
-  cursor: number | null
-  claude: number | null
-  codex: number | null
-}
+} & Record<AgentId, number | null>
 
 export type CumulativeChartModel = {
   points: CumulativeSeriesPoint[]
@@ -16,8 +17,6 @@ export type CumulativeChartModel = {
   yLabel: string
   hasData: boolean
 }
-
-const AGENT_IDS = ['cursor', 'claude', 'codex'] as const
 
 function primaryUsageWindow(agent: AgentShare): UsageResetWindow | null {
   const windows = agent.usageReset?.windows ?? []
@@ -96,6 +95,27 @@ function agentStartDate(
   return chartStart
 }
 
+function emptySeries(): Record<AgentId, Array<number | null>> {
+  return {
+    cursor: [],
+    grok: [],
+    claude: [],
+    gemini: [],
+    codex: [],
+  }
+}
+
+function emptyPoint(date: string): CumulativeSeriesPoint {
+  return {
+    date,
+    cursor: null,
+    grok: null,
+    claude: null,
+    gemini: null,
+    codex: null,
+  }
+}
+
 /**
  * Build one cumulative curve per agent for this billing cycle.
  * X domain is always [billingCycleStart, today].
@@ -127,15 +147,28 @@ export function buildCumulativeChart(
     return primaryUsageWindow(agent)?.usedPercent != null
   })
 
-  const series: Record<(typeof AGENT_IDS)[number], Array<number | null>> = {
-    cursor: [],
-    claude: [],
-    codex: [],
-  }
+  const series = emptySeries()
 
   for (const id of AGENT_IDS) {
     const agent = byId.get(id)
-    if (!agent?.available) {
+    const planPercent = agent
+      ? primaryUsageWindow(agent)?.usedPercent
+      : undefined
+
+    // No agent row at all → no series.
+    if (!agent) {
+      series[id] = days.map(() => null)
+      continue
+    }
+
+    // Prefer local activity when the collector found data; otherwise still
+    // plot a flat plan-% line when billing usage is known (even if local
+    // sessions are missing / outside the window).
+    const hasLocal =
+      agent.available &&
+      agent.daily.some((d) => d.primary > 0 || (d.secondary ?? 0) > 0)
+
+    if (!hasLocal && planPercent == null) {
       series[id] = days.map(() => null)
       continue
     }
@@ -147,7 +180,6 @@ export function buildCumulativeChart(
       if (date < agentStart) return s
       return s + (dailyAmount.get(date) ?? 0)
     }, 0)
-    const planPercent = primaryUsageWindow(agent)?.usedPercent
     const scale =
       total > 0
         ? planPercent != null
@@ -167,16 +199,16 @@ export function buildCumulativeChart(
     })
   }
 
-  const points: CumulativeSeriesPoint[] = days.map((date, i) => ({
-    date,
-    cursor: series.cursor[i] ?? null,
-    claude: series.claude[i] ?? null,
-    codex: series.codex[i] ?? null,
-  }))
+  const points: CumulativeSeriesPoint[] = days.map((date, i) => {
+    const p = emptyPoint(date)
+    for (const id of AGENT_IDS) {
+      p[id] = series[id][i] ?? null
+    }
+    return p
+  })
 
-  const hasData = points.some(
-    (p) =>
-      p.cursor != null || p.claude != null || p.codex != null,
+  const hasData = points.some((p) =>
+    AGENT_IDS.some((id) => p[id] != null),
   )
 
   return {

@@ -39,8 +39,10 @@ export type UsageReset = {
   error?: string
 }
 
+export type AgentId = 'cursor' | 'grok' | 'claude' | 'gemini' | 'codex'
+
 export type AgentUsage = {
-  id: 'cursor' | 'claude' | 'codex'
+  id: AgentId
   name: string
   /** Comparable activity score used for percentage share */
   score: number
@@ -99,7 +101,9 @@ export type DashboardPayload = {
 
 export type RawCollectors = {
   cursor: AgentUsage
+  grok: AgentUsage
   claude: AgentUsage
+  gemini: AgentUsage
   codex: AgentUsage
   system: SystemSnapshot
   github: GithubSnapshot

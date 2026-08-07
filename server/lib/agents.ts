@@ -41,7 +41,7 @@ function sumExtra(daily: DailyPoint[], key: string): number {
 /**
  * Period activity score for the filtered window.
  * Cursor: accepted AI lines, else agent transcript/session volume.
- * Claude/Codex: tokens, else message/event volume.
+ * Token agents (Grok/Claude/Gemini/Codex): tokens, else message/event volume.
  */
 function computePeriodScore(agent: AgentUsage, daily: DailyPoint[]): number {
   if (agent.id === 'cursor') {
@@ -60,10 +60,19 @@ function computePeriodScore(agent: AgentUsage, daily: DailyPoint[]): number {
   }
 
   const totalTokens = sumExtra(daily, 'tokens')
-  if (agent.id === 'claude') {
-    return totalTokens > 0 ? totalTokens : sumExtra(daily, 'messages') * 800
+  if (agent.id === 'grok') {
+    return totalTokens > 0
+      ? totalTokens
+      : sumExtra(daily, 'turns') * 800 || sumExtra(daily, 'messages') * 800
   }
 
+  if (agent.id === 'claude' || agent.id === 'gemini') {
+    return totalTokens > 0
+      ? totalTokens
+      : sumExtra(daily, 'messages') * 800 || sumExtra(daily, 'events') * 120
+  }
+
+  // codex
   return totalTokens > 0 ? totalTokens : sumExtra(daily, 'events') * 120
 }
 
@@ -76,12 +85,17 @@ function hasInRangeActivity(daily: DailyPoint[]): boolean {
   )
 }
 
-/** Align Claude/Codex day primaries to one unit for the filtered window. */
+/** Align non-Cursor day primaries to one unit for the filtered window. */
 function normalizePeriodDaily(agent: AgentUsage, daily: DailyPoint[]): DailyPoint[] {
   if (agent.id === 'cursor' || daily.length === 0) return daily
 
   const useTokens = sumExtra(daily, 'tokens') > 0
-  const volumeKey = agent.id === 'claude' ? 'messages' : 'events'
+  const volumeKey =
+    agent.id === 'grok'
+      ? 'turns'
+      : agent.id === 'codex'
+        ? 'events'
+        : 'messages'
 
   return daily.map((d) => {
     if (useTokens) {
@@ -93,9 +107,16 @@ function normalizePeriodDaily(agent: AgentUsage, daily: DailyPoint[]): DailyPoin
         secondaryLabel: 'output',
       }
     }
+    const volume =
+      d.extras?.[volumeKey] ??
+      (agent.id === 'grok'
+        ? (d.extras?.messages ?? 0)
+        : agent.id === 'gemini'
+          ? (d.extras?.events ?? 0)
+          : 0)
     return {
       ...d,
-      primary: d.extras?.[volumeKey] ?? 0,
+      primary: volume,
       secondary: undefined,
       primaryLabel: volumeKey,
       secondaryLabel: undefined,
@@ -124,12 +145,32 @@ function periodMetrics(agent: AgentUsage, daily: DailyPoint[]): Record<string, n
     }
   }
 
-  if (agent.id === 'claude') {
+  if (agent.id === 'grok') {
+    const inputTokens = sumExtra(daily, 'input')
+    const outputTokens = sumExtra(daily, 'output')
+    const totalTokens = sumExtra(daily, 'tokens')
+    const cacheTokens = sumExtra(daily, 'cacheTokens')
+    const reasoningTokens = sumExtra(daily, 'reasoningTokens')
+    const turns = sumExtra(daily, 'turns') || sumExtra(daily, 'messages')
+    return {
+      ...base,
+      inputTokens,
+      outputTokens,
+      totalTokens,
+      cacheTokens,
+      reasoningTokens,
+      turns,
+      periodScore: score,
+    }
+  }
+
+  if (agent.id === 'claude' || agent.id === 'gemini') {
     const inputTokens = sumExtra(daily, 'input')
     const outputTokens = sumExtra(daily, 'output')
     const totalTokens = sumExtra(daily, 'tokens')
     const cacheTokens = sumExtra(daily, 'cacheTokens')
     const messages = sumExtra(daily, 'messages')
+    const events = sumExtra(daily, 'events')
     return {
       ...base,
       inputTokens,
@@ -137,6 +178,7 @@ function periodMetrics(agent: AgentUsage, daily: DailyPoint[]): Record<string, n
       totalTokens,
       cacheTokens,
       messages,
+      events,
       periodScore: score,
     }
   }

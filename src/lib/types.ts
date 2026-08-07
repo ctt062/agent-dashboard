@@ -35,8 +35,10 @@ export type UsageReset = {
   error?: string
 }
 
+export type AgentId = 'cursor' | 'grok' | 'claude' | 'gemini' | 'codex'
+
 export type AgentShare = {
-  id: 'cursor' | 'claude' | 'codex'
+  id: AgentId
   name: string
   score: number
   percent: number

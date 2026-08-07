@@ -1,8 +1,18 @@
-import { useId } from 'react'
+import { useId, useMemo, useState, type CSSProperties } from 'react'
 import {
   buildCumulativeChart,
   type CumulativeSeriesPoint,
 } from '../lib/cumulativeUsage'
+import {
+  AGENT_IDS,
+  filterAgentsByHarness,
+  HARNESS_META,
+  persistVisibleHarnesses,
+  resolveVisibleHarnesses,
+  toggleHarness,
+  type AgentId,
+  type MarkerKind,
+} from '../lib/harness'
 import type { Theme } from '../lib/theme'
 import {
   formatResetAt,
@@ -80,48 +90,26 @@ function UsageRing({
   )
 }
 
-const LINE_META: Array<{
-  id: AgentShare['id']
-  label: string
-  color: string
-  dash?: string
-  width: number
-  marker: 'circle' | 'square' | 'diamond'
-}> = [
-  {
-    id: 'cursor',
-    label: 'Cursor',
-    color: 'var(--cursor)',
-    width: 2.75,
-    marker: 'circle',
-  },
-  {
-    id: 'claude',
-    label: 'Claude',
-    color: 'var(--claude)',
-    dash: '7 5',
-    width: 2.5,
-    marker: 'square',
-  },
-  {
-    id: 'codex',
-    label: 'Codex',
-    color: 'var(--codex)',
-    dash: '2 5',
-    width: 2.5,
-    marker: 'diamond',
-  },
-]
+const LINE_META = AGENT_IDS.map((id) => ({
+  id,
+  label: HARNESS_META[id].shortLabel,
+  color: HARNESS_META[id].colorVar,
+  dash: HARNESS_META[id].dash,
+  width: HARNESS_META[id].width,
+  marker: HARNESS_META[id].marker as MarkerKind,
+}))
 
-const RING_COLOR: Record<AgentShare['id'], string> = {
+const RING_COLOR: Record<AgentId, string> = {
   cursor: 'var(--cursor)',
+  grok: 'var(--grok)',
   claude: 'var(--claude)',
+  gemini: 'var(--gemini)',
   codex: 'var(--codex)',
 }
 
 function linePath(
   points: CumulativeSeriesPoint[],
-  key: AgentShare['id'],
+  key: AgentId,
   xAt: (i: number) => number,
   yAt: (v: number) => number,
 ): string {
@@ -146,13 +134,22 @@ function Marker({
   y,
   color,
 }: {
-  kind: 'circle' | 'square' | 'diamond'
+  kind: MarkerKind
   x: number
   y: number
   color: string
 }) {
   if (kind === 'circle') {
-    return <circle cx={x} cy={y} r={3.4} fill={color} stroke="var(--marker-stroke)" strokeWidth={1} />
+    return (
+      <circle
+        cx={x}
+        cy={y}
+        r={3.4}
+        fill={color}
+        stroke="var(--marker-stroke)"
+        strokeWidth={1}
+      />
+    )
   }
   if (kind === 'square') {
     return (
@@ -185,7 +182,7 @@ function LegendSwatch({
 }: {
   color: string
   dash?: string
-  marker: 'circle' | 'square' | 'diamond'
+  marker: MarkerKind
 }) {
   return (
     <svg width="36" height="14" viewBox="0 0 36 14" aria-hidden>
@@ -212,21 +209,37 @@ function LegendSwatch({
   )
 }
 
-function CumulativeUsageChart({ agents }: { agents: AgentShare[] }) {
+function CumulativeUsageChart({
+  agents,
+  visible,
+}: {
+  agents: AgentShare[]
+  visible: AgentId[]
+}) {
   const gradientId = useId().replace(/:/g, '')
   const chart = buildCumulativeChart(agents)
+  const visibleSet = new Set(visible)
+  const lines = LINE_META.filter((line) => visibleSet.has(line.id))
   const width = 720
   const height = 260
-  const pad = { top: 18, right: 18, bottom: 42, left: 42 }
+  const pad = { top: 18, right: 52, bottom: 42, left: 42 }
   const innerW = width - pad.left - pad.right
   const innerH = height - pad.top - pad.bottom
 
+  const seriesMax = Math.max(
+    0,
+    ...chart.points.flatMap((p) =>
+      lines
+        .map((line) => p[line.id])
+        .filter((v): v is number => v != null),
+    ),
+  )
+  // Plan charts stay on a 0–100 frame; when every series is low, tighten
+  // the frame so small plan % (e.g. Grok at <1%) stays readable.
   const maxY = Math.max(
     1,
-    ...chart.points.flatMap((p) =>
-      [p.cursor, p.claude, p.codex].filter((v): v is number => v != null),
-    ),
-    100,
+    seriesMax,
+    seriesMax > 0 && seriesMax < 12 ? Math.ceil(seriesMax * 1.4 * 10) / 10 : 100,
   )
 
   const xAt = (i: number) =>
@@ -280,7 +293,7 @@ function CumulativeUsageChart({ agents }: { agents: AgentShare[] }) {
         </p>
       </div>
       <div className="cum-legend">
-        {LINE_META.map((line) => (
+        {lines.map((line) => (
           <span key={line.id} className="cum-legend-item">
             <LegendSwatch
               color={line.color}
@@ -299,8 +312,16 @@ function CumulativeUsageChart({ agents }: { agents: AgentShare[] }) {
       >
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--chart-fill-top)" stopOpacity="0.9" />
-            <stop offset="100%" stopColor="var(--chart-fill-bottom)" stopOpacity="0" />
+            <stop
+              offset="0%"
+              stopColor="var(--chart-fill-top)"
+              stopOpacity="0.95"
+            />
+            <stop
+              offset="100%"
+              stopColor="var(--chart-fill-bottom)"
+              stopOpacity="0"
+            />
           </linearGradient>
         </defs>
         <rect
@@ -320,7 +341,7 @@ function CumulativeUsageChart({ agents }: { agents: AgentShare[] }) {
                 x2={pad.left + innerW}
                 y1={y}
                 y2={y}
-                stroke="var(--line)"
+                stroke="var(--chart-grid)"
                 strokeWidth={1}
               />
               <text
@@ -355,40 +376,79 @@ function CumulativeUsageChart({ agents }: { agents: AgentShare[] }) {
             </text>
           )
         })}
-        {LINE_META.map((line) => (
-          <g key={line.id}>
-            <path
-              d={linePath(chart.points, line.id, xAt, yAt)}
-              fill="none"
-              stroke={line.color}
-              strokeWidth={line.width}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeDasharray={line.dash}
-            />
-            {chart.points.map((p, i) => {
-              const v = p[line.id]
-              if (v == null) return null
-              const isEnd = i === 0 || i === chart.points.length - 1
-              if (!isEnd && i % markerStep !== 0) return null
-              return (
-                <Marker
-                  key={`${line.id}-${p.date}`}
-                  kind={line.marker}
-                  x={xAt(i)}
-                  y={yAt(v)}
-                  color={line.color}
-                />
-              )
-            })}
-          </g>
-        ))}
+        {lines.map((line) => {
+          let lastIdx = -1
+          let lastVal: number | null = null
+          for (let i = chart.points.length - 1; i >= 0; i--) {
+            const v = chart.points[i]?.[line.id]
+            if (v != null) {
+              lastIdx = i
+              lastVal = v
+              break
+            }
+          }
+          return (
+            <g key={line.id}>
+              <path
+                d={linePath(chart.points, line.id, xAt, yAt)}
+                fill="none"
+                stroke={line.color}
+                strokeWidth={line.width}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeDasharray={line.dash}
+              />
+              {chart.points.map((p, i) => {
+                const v = p[line.id]
+                if (v == null) return null
+                const isEnd = i === 0 || i === chart.points.length - 1
+                if (!isEnd && i % markerStep !== 0) return null
+                return (
+                  <Marker
+                    key={`${line.id}-${p.date}`}
+                    kind={line.marker}
+                    x={xAt(i)}
+                    y={yAt(v)}
+                    color={line.color}
+                  />
+                )
+              })}
+              {lastIdx >= 0 && lastVal != null ? (
+                <text
+                  x={xAt(lastIdx) + 6}
+                  y={yAt(lastVal) + 3}
+                  className="cum-end-label"
+                  fill={line.color}
+                >
+                  {lastVal % 1 === 0 ? lastVal.toFixed(0) : lastVal.toFixed(1)}%
+                </text>
+              ) : null}
+            </g>
+          )
+        })}
       </svg>
     </div>
   )
 }
 
 export function AgentPanel({ agents, theme }: Props) {
+  const [visible, setVisible] = useState<AgentId[]>(() =>
+    resolveVisibleHarnesses(),
+  )
+
+  const shown = useMemo(
+    () => filterAgentsByHarness(agents, visible),
+    [agents, visible],
+  )
+
+  const onToggle = (id: AgentId) => {
+    setVisible((cur) => {
+      const next = toggleHarness(cur, id)
+      persistVisibleHarnesses(next)
+      return next
+    })
+  }
+
   return (
     <section className="panel" data-theme-sync={theme}>
       <header className="panel-head">
@@ -396,10 +456,45 @@ export function AgentPanel({ agents, theme }: Props) {
           <h2>This billing cycle</h2>
           <p>Plan usage for each agent</p>
         </div>
+        <div
+          className="harness-picker"
+          role="group"
+          aria-label="Show harnesses"
+        >
+          <span className="harness-label">Show</span>
+          {AGENT_IDS.map((id) => {
+            const on = visible.includes(id)
+            return (
+              <button
+                key={id}
+                type="button"
+                className={`harness-chip${on ? ' on' : ''}`}
+                aria-pressed={on}
+                title={HARNESS_META[id].label}
+                onClick={() => onToggle(id)}
+                style={
+                  {
+                    '--chip': HARNESS_META[id].colorVar,
+                  } as CSSProperties
+                }
+              >
+                <span className="harness-dot" aria-hidden />
+                {HARNESS_META[id].shortLabel}
+              </button>
+            )
+          })}
+        </div>
       </header>
 
-      <div className="usage-row">
-        {agents.map((a) => {
+      <div
+        className="usage-row"
+        style={
+          {
+            '--cols': Math.max(1, shown.length),
+          } as CSSProperties
+        }
+      >
+        {shown.map((a) => {
           const usage = primaryUsageWindow(a)
           const percent = usage?.usedPercent ?? null
 
@@ -412,7 +507,10 @@ export function AgentPanel({ agents, theme }: Props) {
                 <span className="agent-dot" aria-hidden />
                 {a.name}
               </h3>
-              <UsageRing percent={percent} color={RING_COLOR[a.id]} />
+              <UsageRing
+                percent={percent}
+                color={RING_COLOR[a.id] ?? 'var(--accent)'}
+              />
               {usage?.at ? (
                 <p className="usage-detail">Resets {formatResetAt(usage.at)}</p>
               ) : (
@@ -427,7 +525,7 @@ export function AgentPanel({ agents, theme }: Props) {
         })}
       </div>
 
-      <CumulativeUsageChart key={theme} agents={agents} />
+      <CumulativeUsageChart key={theme} agents={shown} visible={visible} />
 
       <style>{`
         .panel {
@@ -438,6 +536,13 @@ export function AgentPanel({ agents, theme }: Props) {
           flex-direction: column;
           gap: 1.4rem;
         }
+        .panel-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 1rem;
+          flex-wrap: wrap;
+        }
         .panel-head h2 { font-size: 1.45rem; }
         .panel-head p {
           margin: 0.4rem 0 0;
@@ -445,9 +550,59 @@ export function AgentPanel({ agents, theme }: Props) {
           font-size: 0.82rem;
           line-height: 1.45;
         }
+        .harness-picker {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 0.35rem;
+          max-width: min(100%, 34rem);
+          justify-content: flex-end;
+        }
+        @media (max-width: 600px) {
+          .harness-picker { justify-content: flex-start; max-width: 100%; }
+        }
+        .harness-label {
+          font-size: 0.68rem;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: var(--dim);
+          margin-right: 0.15rem;
+        }
+        .harness-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.4rem;
+          min-height: 2.1rem;
+          padding: 0.3rem 0.7rem;
+          border: 1px solid var(--line);
+          background: transparent;
+          color: var(--muted);
+          font-size: 0.72rem;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+        }
+        .harness-chip:hover {
+          border-color: var(--muted);
+          color: var(--text);
+        }
+        .harness-chip.on {
+          border-color: var(--chip, var(--line));
+          color: var(--text);
+          background: color-mix(in srgb, var(--chip, var(--text)) 10%, transparent);
+        }
+        .harness-dot {
+          width: 0.45rem;
+          height: 0.45rem;
+          border-radius: 50%;
+          background: var(--dim);
+        }
+        .harness-chip.on .harness-dot {
+          background: var(--chip, var(--text));
+        }
         .usage-row {
           display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
+          grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
           gap: 1rem;
         }
         @media (max-width: 900px) {
@@ -468,7 +623,9 @@ export function AgentPanel({ agents, theme }: Props) {
           min-height: 18rem;
         }
         .usage-card.agent-cursor { --agent: var(--cursor); }
+        .usage-card.agent-grok { --agent: var(--grok); }
         .usage-card.agent-claude { --agent: var(--claude); }
+        .usage-card.agent-gemini { --agent: var(--gemini); }
         .usage-card.agent-codex { --agent: var(--codex); }
         .usage-card.muted { opacity: 0.78; }
         .usage-card h3 {
@@ -486,7 +643,12 @@ export function AgentPanel({ agents, theme }: Props) {
           border-radius: 50%;
           background: var(--agent);
         }
+        .usage-card.agent-grok .agent-dot,
         .usage-card.agent-claude .agent-dot { border-radius: 1px; }
+        .usage-card.agent-gemini .agent-dot {
+          border-radius: 50%;
+          box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--agent) 45%, transparent);
+        }
         .usage-card.agent-codex .agent-dot {
           width: 0.5rem;
           height: 0.5rem;
@@ -581,6 +743,11 @@ export function AgentPanel({ agents, theme }: Props) {
         .cum-tick {
           fill: var(--dim);
           font-size: 10px;
+        }
+        .cum-end-label {
+          font-size: 10px;
+          font-weight: 600;
+          letter-spacing: 0.02em;
         }
         .cum-empty {
           border: 1px solid var(--line);

@@ -6,7 +6,9 @@ import { fileURLToPath } from 'node:url'
 import { collectClaude } from './collectors/claude.js'
 import { collectCodex } from './collectors/codex.js'
 import { collectCursor } from './collectors/cursor.js'
+import { collectGemini } from './collectors/gemini.js'
 import { collectGithub } from './collectors/github.js'
+import { collectGrok } from './collectors/grok.js'
 import { collectSystem } from './collectors/system.js'
 import { collectUsageResets } from './collectors/usageResets.js'
 import { applyRange, withShares } from './lib/agents.js'
@@ -26,7 +28,9 @@ assertLocalhostOnly(HOST)
 
 type UsageResetsPayload = {
   cursor: UsageReset
+  grok: UsageReset
   claude: UsageReset
+  gemini: UsageReset
   codex: UsageReset
 }
 
@@ -65,18 +69,23 @@ async function collectRaw(force = false): Promise<{ data: RawCollectors; cached:
   }
 
   const execute = async (): Promise<RawCollectors> => {
-    const [cursor, claude, codex, system, github, resets] = await Promise.all([
-      collectCursor(),
-      collectClaude(),
-      collectCodex(),
-      Promise.resolve().then(() => collectSystem()),
-      Promise.resolve().then(() => collectGithub()),
-      getUsageResets(force),
-    ])
+    const [cursor, grok, claude, gemini, codex, system, github, resets] =
+      await Promise.all([
+        collectCursor(),
+        collectGrok(),
+        collectClaude(),
+        collectGemini(),
+        collectCodex(),
+        Promise.resolve().then(() => collectSystem()),
+        Promise.resolve().then(() => collectGithub()),
+        getUsageResets(force),
+      ])
     cursor.usageReset = resets.cursor
+    grok.usageReset = resets.grok
     claude.usageReset = resets.claude
+    gemini.usageReset = resets.gemini
     codex.usageReset = resets.codex
-    return { cursor, claude, codex, system, github }
+    return { cursor, grok, claude, gemini, codex, system, github }
   }
 
   if (!inflight) {
@@ -101,10 +110,10 @@ async function buildPayload(
   const range = parseRange(typeof rangeRaw === 'string' ? rangeRaw : undefined)
   const { data, cached } = await collectRaw(force)
   // Dashboard "this billing cycle" follows Cursor's plan cycle when known,
-  // so Claude's rolling weekly window does not pull the shared range back.
+  // so other calendar windows do not pull the shared range back.
   const sharedCycleStart = data.cursor.usageReset?.cycleStart ?? null
   const agents = withShares(
-    [data.cursor, data.claude, data.codex].map((a) => {
+    [data.cursor, data.grok, data.claude, data.gemini, data.codex].map((a) => {
       const since = rangeStartDate(range, new Date(), sharedCycleStart)
       const days = daysInRange(range, new Date(), sharedCycleStart)
       return applyRange(a, range, since, days)

@@ -320,38 +320,187 @@ export async function collectCodexUsageReset(): Promise<UsageReset> {
   return { ok: true, windows, cycleStart }
 }
 
-function claudeOAuthAccessToken(): string | null {
+const GROK_AUTH = join(homedir(), '.grok', 'auth.json')
+
+type GrokAuthEntry = {
+  key?: string
+  refresh_token?: string
+  expires_at?: string
+  oidc_issuer?: string
+  oidc_client_id?: string
+  auth_mode?: string
+}
+
+type GrokAuthFile = Record<string, GrokAuthEntry>
+
+function grokAuthSnapshot(): {
+  scope: string | null
+  entry: GrokAuthEntry | null
+} {
+  if (!existsSync(GROK_AUTH)) return { scope: null, entry: null }
   try {
-    const out = execFileSync(
-      'security',
-      ['find-generic-password', '-s', 'Claude Code-credentials', '-w'],
-      { encoding: 'utf8', timeout: 3000 },
-    ).trim()
-    if (!out) return null
-    const parsed = JSON.parse(out) as {
-      claudeAiOauth?: { accessToken?: string }
-    }
-    return parsed.claudeAiOauth?.accessToken ?? null
+    const raw = JSON.parse(readFileSync(GROK_AUTH, 'utf8')) as GrokAuthFile
+    const [scope, entry] = Object.entries(raw)[0] ?? [null, null]
+    return { scope, entry }
   } catch {
-    return null
+    return { scope: null, entry: null }
   }
 }
 
-function claudeWindowUsedPercent(block: {
-  utilization?: number
-  utilized?: number
-  usage?: number
-}): number | undefined {
-  if (typeof block.utilization === 'number') {
-    return Math.round(block.utilization * 10) / 10
+function grokTokenExpired(entry: GrokAuthEntry | null): boolean {
+  if (!entry?.expires_at) return false
+  const exp = Date.parse(entry.expires_at)
+  if (!Number.isFinite(exp)) return false
+  // Refresh 60s early.
+  return Date.now() >= exp - 60_000
+}
+
+async function refreshGrokAccessToken(
+  scope: string,
+  entry: GrokAuthEntry,
+): Promise<string | null> {
+  if (!entry.refresh_token || !entry.oidc_client_id) return null
+  const issuer = (entry.oidc_issuer ?? 'https://auth.x.ai').replace(/\/$/, '')
+  const res = await fetchJson(`${issuer}/oauth2/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: entry.refresh_token,
+      client_id: entry.oidc_client_id,
+    }).toString(),
+  })
+  if (!res.ok || !res.json || typeof res.json !== 'object') return null
+  const data = res.json as {
+    access_token?: string
+    refresh_token?: string
+    expires_in?: number
   }
-  if (typeof block.utilized === 'number') {
-    return Math.round(block.utilized * 10) / 10
+  if (!data.access_token) return null
+
+  // Fail closed: rotated refresh tokens must land on disk or Grok CLI breaks.
+  if (!existsSync(GROK_AUTH)) return null
+  try {
+    const raw = JSON.parse(readFileSync(GROK_AUTH, 'utf8')) as GrokAuthFile
+    const cur = raw[scope] ?? entry
+    const expiresAt =
+      typeof data.expires_in === 'number' && data.expires_in > 0
+        ? new Date(Date.now() + data.expires_in * 1000).toISOString()
+        : cur.expires_at
+    raw[scope] = {
+      ...cur,
+      key: data.access_token,
+      refresh_token: data.refresh_token ?? cur.refresh_token,
+      expires_at: expiresAt,
+    }
+    const tmp = join(dirname(GROK_AUTH), `.auth.json.${process.pid}.tmp`)
+    writeFileSync(tmp, `${JSON.stringify(raw, null, 2)}\n`, {
+      encoding: 'utf8',
+      mode: 0o600,
+    })
+    renameSync(tmp, GROK_AUTH)
+  } catch {
+    return null
   }
-  if (typeof block.usage === 'number') {
-    return Math.round(block.usage * 10) / 10
+  return data.access_token
+}
+
+async function grokAccessToken(): Promise<string | null> {
+  const { scope, entry } = grokAuthSnapshot()
+  if (!scope || !entry) return null
+  if (entry.key && !grokTokenExpired(entry)) return entry.key
+  if (entry.refresh_token) {
+    const refreshed = await refreshGrokAccessToken(scope, entry)
+    if (refreshed) return refreshed
   }
-  return undefined
+  return entry.key ?? null
+}
+
+function moneyVal(raw: unknown): number | null {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw
+  if (raw && typeof raw === 'object' && 'val' in raw) {
+    const v = (raw as { val?: unknown }).val
+    if (typeof v === 'number' && Number.isFinite(v)) return v
+  }
+  return null
+}
+
+export async function collectGrokUsageReset(): Promise<UsageReset> {
+  const access = await grokAccessToken()
+  if (!access) {
+    return {
+      ok: false,
+      windows: [],
+      error: 'Grok/xAI auth not found. Run `grok login`.',
+    }
+  }
+
+  const res = await fetchJson('https://cli-chat-proxy.grok.com/v1/billing', {
+    headers: {
+      Authorization: `Bearer ${access}`,
+      Accept: 'application/json',
+      'User-Agent': 'agent-dashboard/0.1',
+    },
+  })
+  if (!res.ok || !res.json || typeof res.json !== 'object') {
+    return {
+      ok: false,
+      windows: [],
+      error: `Grok billing API HTTP ${res.status}`,
+    }
+  }
+
+  const data = res.json as {
+    config?: {
+      monthlyLimit?: unknown
+      used?: unknown
+      onDemandCap?: unknown
+      billingPeriodStart?: string
+      billingPeriodEnd?: string
+    }
+  }
+  const cfg = data.config
+  if (!cfg) {
+    return {
+      ok: false,
+      windows: [],
+      error: 'Grok billing payload missing config.',
+    }
+  }
+
+  const limit = moneyVal(cfg.monthlyLimit)
+  const used = moneyVal(cfg.used)
+  const onDemandCap = moneyVal(cfg.onDemandCap)
+  const usedPercent =
+    limit != null && limit > 0 && used != null
+      ? Math.round((used / limit) * 1000) / 10
+      : undefined
+
+  const noteParts: string[] = []
+  if (used != null && limit != null) {
+    noteParts.push(`$${used.toFixed(used % 1 === 0 ? 0 : 2)} / $${limit.toFixed(limit % 1 === 0 ? 0 : 2)}`)
+  }
+  if (onDemandCap != null && onDemandCap > 0) {
+    noteParts.push(`On-demand cap $${onDemandCap}`)
+  }
+
+  const windows: UsageResetWindow[] = [
+    {
+      label: 'Billing cycle',
+      at: cfg.billingPeriodEnd ?? null,
+      usedPercent,
+      used: used ?? undefined,
+      limit: limit ?? undefined,
+      unit: 'usd',
+      note: noteParts.length > 0 ? noteParts.join(' · ') : undefined,
+    },
+  ]
+
+  return {
+    ok: true,
+    windows,
+    cycleStart: cfg.billingPeriodStart ?? null,
+  }
 }
 
 export async function collectClaudeUsageReset(): Promise<UsageReset> {
@@ -393,9 +542,10 @@ export async function collectClaudeUsageReset(): Promise<UsageReset> {
       }
       if (windows.length > 0) {
         const weekly =
-          windows.find((w) => /week/i.test(w.label)) ?? windows[windows.length - 1]
+          windows.find((w) => /week/i.test(w.label)) ??
+          windows[windows.length - 1]
         let cycleStart: string | null = null
-        if (weekly.at) {
+        if (weekly?.at) {
           const end = Date.parse(weekly.at)
           if (Number.isFinite(end)) {
             // Claude weekly caps are rolling ~7 days.
@@ -435,15 +585,63 @@ export async function collectClaudeUsageReset(): Promise<UsageReset> {
   }
 }
 
+function claudeOAuthAccessToken(): string | null {
+  try {
+    const out = execFileSync(
+      'security',
+      ['find-generic-password', '-s', 'Claude Code-credentials', '-w'],
+      { encoding: 'utf8', timeout: 3000 },
+    ).trim()
+    if (!out) return null
+    const parsed = JSON.parse(out) as {
+      claudeAiOauth?: { accessToken?: string }
+    }
+    return parsed.claudeAiOauth?.accessToken ?? null
+  } catch {
+    return null
+  }
+}
+
+function claudeWindowUsedPercent(block: {
+  utilization?: number
+  utilized?: number
+  usage?: number
+}): number | undefined {
+  if (typeof block.utilization === 'number') {
+    return Math.round(block.utilization * 10) / 10
+  }
+  if (typeof block.utilized === 'number') {
+    return Math.round(block.utilized * 10) / 10
+  }
+  if (typeof block.usage === 'number') {
+    return Math.round(block.usage * 10) / 10
+  }
+  return undefined
+}
+
+/** Gemini / Antigravity do not expose a local plan-% API yet. */
+export async function collectGeminiUsageReset(): Promise<UsageReset> {
+  return {
+    ok: false,
+    windows: [],
+    error:
+      'Gemini plan % is not available from local credentials yet. Activity still plots when local logs exist.',
+  }
+}
+
 export async function collectUsageResets(): Promise<{
   cursor: UsageReset
+  grok: UsageReset
   claude: UsageReset
+  gemini: UsageReset
   codex: UsageReset
 }> {
-  const [cursor, claude, codex] = await Promise.all([
+  const [cursor, grok, claude, gemini, codex] = await Promise.all([
     collectCursorUsageReset(),
+    collectGrokUsageReset(),
     collectClaudeUsageReset(),
+    collectGeminiUsageReset(),
     collectCodexUsageReset(),
   ])
-  return { cursor, claude, codex }
+  return { cursor, grok, claude, gemini, codex }
 }
