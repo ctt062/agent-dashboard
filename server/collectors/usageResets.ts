@@ -425,6 +425,127 @@ function moneyVal(raw: unknown): number | null {
   return null
 }
 
+type GrokBillingConfig = {
+  monthlyLimit?: unknown
+  used?: unknown
+  onDemandCap?: unknown
+  onDemandUsed?: unknown
+  creditUsagePercent?: unknown
+  billingPeriodStart?: string
+  billingPeriodEnd?: string
+  currentPeriod?: {
+    type?: string
+    start?: string
+    end?: string
+  }
+  productUsage?: Array<{ product?: string; usagePercent?: number }>
+  prepaidBalance?: unknown
+  isUnifiedBillingUser?: boolean
+}
+
+function grokPeriodLabel(cfg: GrokBillingConfig): string {
+  const type = cfg.currentPeriod?.type ?? ''
+  if (/weekly/i.test(type)) return 'Weekly'
+  if (/monthly|month/i.test(type)) return 'Monthly'
+  if (cfg.creditUsagePercent != null) return 'Usage pool'
+  return 'Billing cycle'
+}
+
+function grokCreditsUsage(
+  cfg: GrokBillingConfig,
+): UsageReset | null {
+  const raw = cfg.creditUsagePercent
+  const percent =
+    typeof raw === 'number' && Number.isFinite(raw)
+      ? Math.round(raw * 10) / 10
+      : null
+  if (percent == null) return null
+
+  const start =
+    cfg.currentPeriod?.start ?? cfg.billingPeriodStart ?? null
+  const end = cfg.currentPeriod?.end ?? cfg.billingPeriodEnd ?? null
+  const noteParts: string[] = []
+  for (const row of cfg.productUsage ?? []) {
+    if (!row?.product || typeof row.usagePercent !== 'number') continue
+    const p =
+      row.usagePercent % 1 === 0
+        ? row.usagePercent.toFixed(0)
+        : row.usagePercent.toFixed(1)
+    noteParts.push(`${row.product} ${p}%`)
+  }
+  const onDemandCap = moneyVal(cfg.onDemandCap)
+  const onDemandUsed = moneyVal(cfg.onDemandUsed)
+  if (onDemandCap != null && onDemandCap > 0) {
+    const usedBit =
+      onDemandUsed != null
+        ? `$${onDemandUsed.toFixed(onDemandUsed % 1 === 0 ? 0 : 2)} / `
+        : ''
+    noteParts.push(
+      `On-demand ${usedBit}$${onDemandCap.toFixed(onDemandCap % 1 === 0 ? 0 : 2)}`,
+    )
+  }
+  const prepaid = moneyVal(cfg.prepaidBalance)
+  if (prepaid != null && prepaid > 0) {
+    noteParts.push(
+      `Prepaid $${prepaid.toFixed(prepaid % 1 === 0 ? 0 : 2)}`,
+    )
+  }
+
+  return {
+    ok: true,
+    windows: [
+      {
+        label: grokPeriodLabel(cfg),
+        at: end,
+        usedPercent: percent,
+        unit: 'plan',
+        note: noteParts.length > 0 ? noteParts.join(' · ') : undefined,
+      },
+    ],
+    cycleStart: start,
+  }
+}
+
+function grokDollarUsage(cfg: GrokBillingConfig): UsageReset {
+  const limit = moneyVal(cfg.monthlyLimit)
+  const used = moneyVal(cfg.used)
+  const onDemandCap = moneyVal(cfg.onDemandCap)
+  const usedPercent =
+    limit != null && limit > 0 && used != null
+      ? Math.round((used / limit) * 1000) / 10
+      : undefined
+
+  const noteParts: string[] = []
+  if (used != null && limit != null && limit > 0) {
+    noteParts.push(
+      `$${used.toFixed(used % 1 === 0 ? 0 : 2)} / $${limit.toFixed(limit % 1 === 0 ? 0 : 2)}`,
+    )
+  } else if (used != null && (limit == null || limit <= 0)) {
+    noteParts.push(
+      `$${used.toFixed(used % 1 === 0 ? 0 : 2)} used (no included limit reported)`,
+    )
+  }
+  if (onDemandCap != null && onDemandCap > 0) {
+    noteParts.push(`On-demand cap $${onDemandCap}`)
+  }
+
+  return {
+    ok: true,
+    windows: [
+      {
+        label: 'Billing cycle',
+        at: cfg.billingPeriodEnd ?? null,
+        usedPercent,
+        used: used ?? undefined,
+        limit: limit ?? undefined,
+        unit: 'usd',
+        note: noteParts.length > 0 ? noteParts.join(' · ') : undefined,
+      },
+    ],
+    cycleStart: cfg.billingPeriodStart ?? null,
+  }
+}
+
 export async function collectGrokUsageReset(): Promise<UsageReset> {
   const access = await grokAccessToken()
   if (!access) {
@@ -435,31 +556,38 @@ export async function collectGrokUsageReset(): Promise<UsageReset> {
     }
   }
 
+  const headers = {
+    Authorization: `Bearer ${access}`,
+    Accept: 'application/json',
+    'User-Agent': 'agent-dashboard/0.1',
+  }
+
+  // Unified SuperGrok weekly pool is exposed as creditUsagePercent.
+  // Dollar monthlyLimit is often 0 for those accounts.
+  const creditsRes = await fetchJson(
+    'https://cli-chat-proxy.grok.com/v1/billing?format=credits',
+    { headers },
+  )
+  if (creditsRes.ok && creditsRes.json && typeof creditsRes.json === 'object') {
+    const cfg = (creditsRes.json as { config?: GrokBillingConfig }).config
+    if (cfg) {
+      const fromCredits = grokCreditsUsage(cfg)
+      if (fromCredits) return fromCredits
+    }
+  }
+
   const res = await fetchJson('https://cli-chat-proxy.grok.com/v1/billing', {
-    headers: {
-      Authorization: `Bearer ${access}`,
-      Accept: 'application/json',
-      'User-Agent': 'agent-dashboard/0.1',
-    },
+    headers,
   })
   if (!res.ok || !res.json || typeof res.json !== 'object') {
     return {
       ok: false,
       windows: [],
-      error: `Grok billing API HTTP ${res.status}`,
+      error: `Grok billing API HTTP ${res.status || creditsRes.status}`,
     }
   }
 
-  const data = res.json as {
-    config?: {
-      monthlyLimit?: unknown
-      used?: unknown
-      onDemandCap?: unknown
-      billingPeriodStart?: string
-      billingPeriodEnd?: string
-    }
-  }
-  const cfg = data.config
+  const cfg = (res.json as { config?: GrokBillingConfig }).config
   if (!cfg) {
     return {
       ok: false,
@@ -468,39 +596,7 @@ export async function collectGrokUsageReset(): Promise<UsageReset> {
     }
   }
 
-  const limit = moneyVal(cfg.monthlyLimit)
-  const used = moneyVal(cfg.used)
-  const onDemandCap = moneyVal(cfg.onDemandCap)
-  const usedPercent =
-    limit != null && limit > 0 && used != null
-      ? Math.round((used / limit) * 1000) / 10
-      : undefined
-
-  const noteParts: string[] = []
-  if (used != null && limit != null) {
-    noteParts.push(`$${used.toFixed(used % 1 === 0 ? 0 : 2)} / $${limit.toFixed(limit % 1 === 0 ? 0 : 2)}`)
-  }
-  if (onDemandCap != null && onDemandCap > 0) {
-    noteParts.push(`On-demand cap $${onDemandCap}`)
-  }
-
-  const windows: UsageResetWindow[] = [
-    {
-      label: 'Billing cycle',
-      at: cfg.billingPeriodEnd ?? null,
-      usedPercent,
-      used: used ?? undefined,
-      limit: limit ?? undefined,
-      unit: 'usd',
-      note: noteParts.length > 0 ? noteParts.join(' · ') : undefined,
-    },
-  ]
-
-  return {
-    ok: true,
-    windows,
-    cycleStart: cfg.billingPeriodStart ?? null,
-  }
+  return grokDollarUsage(cfg)
 }
 
 export async function collectClaudeUsageReset(): Promise<UsageReset> {
