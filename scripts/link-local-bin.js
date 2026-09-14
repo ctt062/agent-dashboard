@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// Local `npm install` does not link this package's own `bin` into
+// `node_modules/.bin`. Without that link, `npx agent-deck` looks up the
+// unpublished name on the registry and 404s. `prepare` creates the link.
 import { lstatSync, mkdirSync, symlinkSync, unlinkSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
