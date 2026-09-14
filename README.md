@@ -46,7 +46,7 @@ Missing collectors degrade gracefully. Each row shows a short hint instead of cr
 
 - **macOS** (system collector uses `top` / `ioreg`)
 - **Node.js 22+** (uses built-in `node:sqlite`)
-- **[GitHub CLI](https://cli.github.com/)** authenticated (`gh auth status`) for the contribution calendar
+- **[GitHub CLI](https://cli.github.com/)** authenticated (`gh auth status`) for the GitHub contribution line
 - Optional local data for agent rows:
   - Cursor installed (reads `~/Library/Application Support/Cursor/...`)
   - Grok (xAI) sessions under `~/.grok/sessions/` (and `grok login` for plan %)
