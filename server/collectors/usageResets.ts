@@ -721,7 +721,7 @@ export async function collectGeminiUsageReset(): Promise<UsageReset> {
     ok: false,
     windows: [],
     error:
-      'Gemini plan % is not available from local credentials yet. Activity still plots when local logs exist.',
+      'Gemini plan % is not available from local credentials yet. Local activity is still counted when logs exist.',
   }
 }
 
