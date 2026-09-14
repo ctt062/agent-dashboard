@@ -1,0 +1,7 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "echo skip-install",
+  "buildCommand": "mkdir -p dist && printf '%s\\n' '<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>agent-deck</title></head><body><p>agent-deck is a terminal UI. Run it with the agent-deck command; this project is not a web app.</p></body></html>' > dist/index.html",
+  "outputDirectory": "dist"
+}
