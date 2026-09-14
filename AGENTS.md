@@ -1,8 +1,8 @@
 # Project agent memory
 
-Agent Deck is a terminal UI, not a localhost web app. The product command is `agent-deck` (`bin/agent-deck.js` → `tui/cli.ts`). Collectors stay in `server/collectors/` and are called in-process via `server/lib/dashboard.ts`. Do not reintroduce an Express/Vite dashboard, LaunchAgent auto-start, or `127.0.0.1` serve path.
+Agent Deck is a terminal UI, not a localhost web app. The product command is `agent-deck` (`bin/agent-deck.js` → `tui/cli.ts`). After `npm install`, `npx agent-deck` must resolve that local bin (`node_modules/.bin/agent-deck`); do not send people to an unpublished `agent-deck` registry package. Collectors stay in `server/collectors/` and are called in-process via `server/lib/dashboard.ts`. Do not reintroduce an Express/Vite dashboard, LaunchAgent auto-start, or `127.0.0.1` serve path.
 
-- Tests: `npm test` (status rendering in `tui/status.test.ts`, CLI in `tui/cli.test.ts`)
+- Tests: `npm test` (status rendering in `tui/status.test.ts`, CLI in `tui/cli.test.ts`, local launch in `tui/launch.test.ts`)
 - Typecheck: `npm run build` (`tsc --noEmit`)
 
 ## Maintaining this file

@@ -31,7 +31,7 @@ That opens the terminal window. Use `q` to quit and `r` to refresh.
 |---------|----------------|
 | `npx agent-deck` | Open the terminal UI (the product command) |
 | `npx agent-deck --once` | Print provider status and exit |
-| `npm start` | Same as `agent-deck` via tsx |
+| `npm start` | Same as `npx agent-deck` |
 | `npm test` | Unit tests |
 
 ## What you get
