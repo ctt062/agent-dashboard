@@ -163,7 +163,7 @@ describe('provider status rendering', () => {
     assert.match(frame, /└/)
     const widths = frame.split('\n').map((l) => l.length)
     assert.ok(widths.every((w) => w === widths[0]))
-    assert.ok((widths[0] ?? 0) <= 82)
+    assert.ok((widths[0] ?? 0) <= 80)
   })
 
   it('wraps long provider hints without collapsing the status columns', () => {

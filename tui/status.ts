@@ -116,7 +116,7 @@ export function formatProviderRow(line: ProviderStatusLine, nameWidth: number): 
   return `${name}  ${plan}  ${avail}  ${line.detail}`
 }
 
-const WINDOW_INNER = 78
+const WINDOW_INNER = 76
 
 export function formatDeck(payload: DashboardPayload): string {
   const rows = payload.agents.map((agent) => providerStatus(agent))

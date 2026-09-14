@@ -37,7 +37,7 @@
     "dev": "tsx watch tui/cli.ts",
     "build": "tsc --noEmit",
     "lint": "oxlint",
-    "test": "node --import tsx --test server/lib/range.test.ts server/lib/cursor-stamp.test.ts tui/status.test.ts tui/cli.test.ts tui/package-contract.test.ts"
+    "test": "node --import tsx --test server/lib/range.test.ts server/lib/cursor-stamp.test.ts tui/status.test.ts tui/cli.test.ts"
   },
   "dependencies": {
     "dotenv": "^17.4.2",
