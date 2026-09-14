@@ -2,10 +2,13 @@
   "name": "agent-dashboard",
   "private": true,
   "version": "0.1.0",
-  "description": "Local macOS Agent Deck: AI agent usage, Mac metrics, and GitHub contributions",
+  "description": "Terminal Agent Deck: AI provider plan usage on this Mac",
   "license": "MIT",
   "author": "ctt062",
   "type": "module",
+  "bin": {
+    "agent-deck": "bin/agent-deck.js"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ctt062/agent-dashboard.git"
@@ -16,6 +19,7 @@
   "homepage": "https://github.com/ctt062/agent-dashboard#readme",
   "keywords": [
     "dashboard",
+    "tui",
     "cursor",
     "grok",
     "xai",
@@ -23,42 +27,28 @@
     "gemini",
     "codex",
     "macos",
-    "localhost",
     "github-contributions"
   ],
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "dev": "concurrently -k -n api,web -c gray.bold,white.bold \"npm:dev:api\" \"npm:dev:web\"",
-    "dev:api": "tsx watch server/index.ts",
-    "dev:web": "vite",
-    "build": "tsc -b && vite build",
-    "start": "tsx server/index.ts",
-    "serve": "npm run build && npm start",
-    "preview": "vite preview",
+    "start": "tsx tui/cli.ts",
+    "dev": "tsx watch tui/cli.ts",
+    "build": "tsc --noEmit",
     "lint": "oxlint",
-    "test": "node --test server/lib/range.test.ts server/lib/localhost-intent.test.ts server/lib/localhost.test.ts server/lib/cursor-stamp.test.ts src/lib/types.test.ts src/lib/api.test.ts src/lib/cumulativeUsage.test.ts src/lib/harness.test.ts src/lib/theme.test.ts",
-    "setup": "npm run build && npm run launchagent:install",
-    "launchagent:install": "bash scripts/install-launchagent.sh",
-    "launchagent:uninstall": "bash scripts/uninstall-launchagent.sh"
+    "test": "node --import tsx --test server/lib/range.test.ts server/lib/cursor-stamp.test.ts tui/status.test.ts tui/cli.test.ts tui/package-contract.test.ts"
   },
   "dependencies": {
-    "concurrently": "^10.0.4",
     "dotenv": "^17.4.2",
-    "express": "^5.2.1",
+    "ink": "^6.4.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "tsx": "^4.23.1"
   },
   "devDependencies": {
-    "@types/express": "^5.0.6",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.3",
     "oxlint": "^1.71.0",
-    "tsx": "^4.23.1",
-    "typescript": "~6.0.2",
-    "vite": "^8.1.1"
+    "typescript": "~6.0.2"
   }
 }
