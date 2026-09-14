@@ -6,7 +6,7 @@ import type {
   UsageResetWindow,
 } from '../server/types.js'
 
-export type Availability = 'available' | 'no data'
+export type Availability = 'available' | 'no data' | ''
 
 export type ProviderStatusLine = {
   id: AgentShare['id']
@@ -48,7 +48,13 @@ export function formatResetAt(iso: string): string {
 
 export function providerStatus(agent: AgentShare): ProviderStatusLine {
   const usage = primaryUsageWindow(agent)
-  const availability: Availability = agent.available ? 'available' : 'no data'
+  const hasPlanPercent =
+    usage?.usedPercent != null && Number.isFinite(usage.usedPercent)
+  const availability: Availability = agent.available
+    ? 'available'
+    : hasPlanPercent
+      ? ''
+      : 'no data'
   let detail: string
   if (!agent.available) {
     detail =

@@ -141,6 +141,44 @@ describe('provider status rendering', () => {
     assert.match(codex.detail, /Resets|included/)
   })
 
+  it('keeps plan % and omits no data when local activity is missing', () => {
+    const line = providerStatus(
+      agent({
+        id: 'grok',
+        name: 'Grok (xAI)',
+        available: false,
+        hint: 'No Grok sessions on this Mac.',
+        usageReset: {
+          ok: true,
+          windows: [{ label: 'Plan', at: null, usedPercent: 55 }],
+        },
+      }),
+    )
+    assert.equal(line.plan, '55%')
+    assert.equal(line.availability, '')
+    assert.equal(line.detail, 'No Grok sessions on this Mac.')
+    const row = formatProviderRow(line, 12)
+    assert.match(row, /55%/)
+    assert.doesNotMatch(row, /no data/)
+    const frame = formatDeck({
+      ...payload,
+      agents: [
+        agent({
+          id: 'grok',
+          name: 'Grok (xAI)',
+          available: false,
+          hint: 'No Grok sessions on this Mac.',
+          usageReset: {
+            ok: true,
+            windows: [{ label: 'Plan', at: null, usedPercent: 55 }],
+          },
+        }),
+      ],
+    })
+    assert.match(frame, /55%/)
+    assert.doesNotMatch(frame, /no data/)
+  })
+
   it('formats a terminal window with every provider', () => {
     const frame = formatDeck(payload)
     assert.match(frame, /┌─ Agent Deck /)

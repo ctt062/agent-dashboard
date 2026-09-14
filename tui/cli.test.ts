@@ -161,6 +161,7 @@ describe('command entrypoint', () => {
     assert.deepEqual(parseArgv(['--help']), { kind: 'help' })
     assert.deepEqual(parseArgv(['-h']), { kind: 'help' })
     assert.deepEqual(parseArgv(['--version']), { kind: 'version' })
+    assert.equal(parseArgv(['--print']).kind, 'error')
     assert.equal(parseArgv(['--serve']).kind, 'error')
     assert.equal(parseArgv(['--lan']).kind, 'error')
   })

@@ -39,7 +39,7 @@ export function parseArgv(argv: string[]): CliCommand {
     const a = args[0]
     if (a === '--help' || a === '-h' || a === 'help') return { kind: 'help' }
     if (a === '--version' || a === '-v') return { kind: 'version' }
-    if (a === '--once' || a === '--print') return { kind: 'once' }
+    if (a === '--once') return { kind: 'once' }
   }
   return { kind: 'error', message: USAGE_ERROR }
 }
