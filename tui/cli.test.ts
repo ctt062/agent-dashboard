@@ -211,6 +211,45 @@ describe('command entrypoint', () => {
     assert.match(text, /GitHub CLI is not authenticated/)
   })
 
+  it('keeps plan % and omits no data when local activity is missing', async () => {
+    const out = io()
+    const payload: DashboardPayload = {
+      ...stubPayload,
+      agents: [
+        {
+          ...stubPayload.agents[1]!,
+          available: false,
+          hint: 'No Grok sessions on this Mac.',
+          usageReset: {
+            ok: true,
+            windows: [{ label: 'Plan', at: null, usedPercent: 55 }],
+          },
+        },
+      ],
+    }
+    const code = await runCli(
+      ['--once'],
+      deps({
+        io: out.captured,
+        loadDashboard: async () => payload,
+        renderTui: async () => {
+          throw new Error('TUI should not start in this test')
+        },
+      }),
+    )
+    assert.equal(code, 0)
+    const text = out.stdout()
+    assert.match(text, /┌─ Agent Deck /)
+    assert.match(text, /Grok \(xAI\)/)
+    assert.match(text, /55%/)
+    assert.match(text, /No Grok sessions on this Mac/)
+    assert.doesNotMatch(text, /no data/)
+    const grokLine = text.split('\n').find((l) => l.includes('Grok (xAI)'))
+    assert.ok(grokLine)
+    assert.match(grokLine, /55%/)
+    assert.doesNotMatch(grokLine, /no data/)
+  })
+
   it('opens the TUI on a TTY without --once', async () => {
     const out = io()
     let opened = false
