@@ -2,7 +2,7 @@
 
 A terminal UI for your AI coding agents on this Mac.
 
-Type `agent-deck` and a window shows **this billing cycle's plan usage** for Cursor, Grok (xAI), Claude Code, Gemini, and Codex: used % when the provider exposes it, whether local data is available, and a short hint when a collector has nothing to show.
+Type `agent-deck` and a window shows **this billing cycle's plan usage** for Cursor, Grok (xAI), Claude Code, Gemini, and Codex: used % when the provider exposes it (kept even when this Mac has no local sessions), and a short hint when a collector has nothing to show.
 
 Mac CPU / memory / GPU and a compact GitHub contribution line sit under the provider list. Collectors run in-process in the same command. No browser, no `127.0.0.1` server, and no LaunchAgent.
 
@@ -36,7 +36,7 @@ That opens the terminal window. Use `q` to quit and `r` to refresh.
 
 ## What you get
 
-- **Provider status** - plan % for this billing cycle when known, availability, and a hint when there is no local data
+- **Provider status** - plan % for this billing cycle when known. A row does not show `no data` next to a real plan %; a hint still explains missing local activity.
 - **Mac meters** - CPU, memory, and GPU utilization
 - **GitHub line** - this year's contribution count via local `gh` auth (sparkline for the last 7 days)
 
@@ -58,7 +58,7 @@ Missing collectors degrade gracefully. Each row shows a short hint instead of cr
 
 The plan column for each agent is **vendor plan usage for this billing cycle** when the provider exposes it (for example Cursor's included Auto / API usage).
 
-Daily activity used internally still follows **Cursor's billing-cycle start to now**, so other calendar windows do not pull the timeline backward.
+The shared local-activity window follows **Cursor's billing-cycle start to now**, so other calendar windows do not pull that range backward.
 
 Local signals on this Mac:
 

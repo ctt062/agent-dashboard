@@ -6,7 +6,7 @@ export type DailyPoint = {
   secondary?: number
   primaryLabel: string
   secondaryLabel?: string
-  /** Extra numeric breakdown for tooltips and period rollups */
+  /** Extra numeric breakdown for period rollups */
   extras?: Record<string, number>
 }
 
